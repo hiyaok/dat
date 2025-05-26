@@ -1,3 +1,4 @@
+//
 const TelegramBot = require('node-telegram-bot-api');
 
 // ========================================
@@ -25,7 +26,8 @@ const formSteps = {
     kids: 'kids',
     religion: 'religion',
     community: 'community',
-    aboutYou: 'aboutYou',
+    prompts: 'prompts',
+    photos: 'photos',
     completed: 'completed'
 };
 
@@ -38,7 +40,6 @@ const platforms = {
 
 const formOptions = {
     gender: ['👨 Pria', '👩 Wanita', '🏳️‍⚧️ Non-binary'],
-    showProfile: ['✅ Yes', '❌ No'],
     mode: ['💕 Date', '👫 BFF'],
     meetWith: ['👨 Men', '👩 Women', '👥 Both'],
     purpose: [
@@ -90,7 +91,112 @@ const formOptions = {
         '🏺 Indigenous rights', '🏳️‍🌈 LGBTQ+ rights', '🧠 Neurodiversity',
         '🩺 Reproductive rights', '🚫 Stop Asian Hate', '🏳️‍⚧️ Trans rights',
         '🤲 Volunteering', '🗳️ Voter rights'
-    ]
+    ],
+    // PROMPT CATEGORIES (dari gambar)
+    promptCategories: {
+        lookingFor: {
+            name: '💕 Looking for',
+            prompts: [
+                'What I\'d really like to find is',
+                'I\'m hoping you',
+                'What makes a relationship great is',
+                'Hopefully you\'re also really into',
+                'Teach me something about',
+                'My favorite quality in a person is',
+                'My ultimate green flag is',
+                'The one thing I\'d love to know about you is',
+                'Send me a like if you'
+            ]
+        },
+        bitOfFun: {
+            name: '🎉 Bit of fun',
+            prompts: [
+                'I get way too excited about',
+                'The last note I wrote on my phone says',
+                'If I could bring back one trend, it would be',
+                'I\'ll never forget the time I',
+                'I probably shouldn\'t admit this, but',
+                'My favorite way to do nothing is',
+                'My most random skill is',
+                'Something funny I think about all the time is',
+                'A fictional character I relate to is',
+                'When my phone dies I',
+                'A nickname my friends have for me is',
+                'Two truths and a lie',
+                'I was today years old when I learned'
+            ]
+        },
+        dateNight: {
+            name: '💕 Date night',
+            prompts: [
+                'Send me a like if you know a great spot for',
+                'I\'ve got the best recommendation for',
+                'I\'ll know we vibe on a date if',
+                'An essential to a successful first date is',
+                'I hype myself up for a first date by',
+                'Instead of drinks, let\'s',
+                'I know the best spot in town for',
+                'Win me over by',
+                'Together, we could',
+                'My couples dress-up idea is',
+                'If I cooked you dinner it would be',
+                'My perfect first date is'
+            ]
+        },
+        aboutMe: {
+            name: '🌟 About me',
+            prompts: [
+                'I will never shut up about',
+                'After work you can find me',
+                'One thing to know about my friend group is',
+                'One thing you need to know about me is',
+                'My real-life superpower is',
+                'I\'m happiest when',
+                'My personal hell is',
+                'The quickest way to my heart is',
+                'My humble brag is',
+                'If I had to describe dating me in 3 words',
+                'I\'m a real nerd about',
+                'My simple pleasures are',
+                'I\'m known for'
+            ]
+        },
+        selfCare: {
+            name: '🧘 Self-care',
+            prompts: [
+                'I\'ve been challenging myself to',
+                'I get out of a bad mood by',
+                'My perfect Sunday includes',
+                'My healthy obsession is',
+                'Something I recently learned about myself is',
+                'To me, self-care is',
+                'I\'m really proud of',
+                'My morning routine looks like',
+                'I feel my hottest when',
+                'When I unplug I like to',
+                'My most important boundary is',
+                'What my therapist would say about me'
+            ]
+        },
+        realTalk: {
+            name: '💬 Real talk',
+            prompts: [
+                'Do you agree or disagree that',
+                'I disagree when people say I\'m',
+                'The world would be a better place with more',
+                'Low-key, I think I',
+                'A pro and a con of dating me',
+                'What if I told you that',
+                'If loving this is wrong, I don\'t want to be right',
+                'My dream is to',
+                'I show I care by',
+                'I get fully nervous when',
+                'Don\'t be mad if I',
+                'My family still don\'t know I',
+                'My character flaw is'
+            ]
+        }
+    }
 };
 
 // ========================================
@@ -135,8 +241,12 @@ async function editOrSendMessage(chatId, userId, text, keyboard = null) {
         }
     } catch (error) {
         // If edit fails, send new message
-        const sentMessage = await bot.sendMessage(chatId, text, options);
-        messageIds.set(userId, sentMessage.message_id);
+        try {
+            const sentMessage = await bot.sendMessage(chatId, text, options);
+            messageIds.set(userId, sentMessage.message_id);
+        } catch (sendError) {
+            console.error('Error sending message:', sendError);
+        }
     }
 }
 
@@ -256,7 +366,6 @@ Silakan klik tombol di bawah untuk chat langsung dengan admin kami:
 
 📞 **Kontak tersedia:**
 • Telegram: Chat langsung
-• WhatsApp: +62 812-3456-7890
 • Email: admin@datingbot.com
 
 ⏰ **Jam operasional:**
@@ -265,7 +374,6 @@ Senin - Minggu: 08:00 - 22:00 WIB`;
     const keyboard = {
         inline_keyboard: [
             [{ text: '👨‍💼 Chat Admin', url: `tg://user?id=${ADMIN_ID}` }],
-            [{ text: '📞 WhatsApp', url: 'https://wa.me/6281234567890' }],
             [{ text: '🔙 Kembali', callback_data: 'main_menu' }]
         ]
     };
@@ -325,6 +433,8 @@ function handlePlatformSelection(chatId, userId, data) {
             selectedInterests: [],
             selectedValues: [],
             selectedCommunity: [],
+            prompts: [],
+            photos: [],
             waitingFor: null
         });
     }
@@ -336,7 +446,7 @@ function handlePlatformSelection(chatId, userId, data) {
     const message = `
 ✅ **Platform dipilih: ${platforms[platform]}**
 
-📝 **Personal Info - Step 1/8**
+📝 **Personal Info - Step 1/9**
 
 Mari kita mulai dengan informasi dasar kamu:
 
@@ -358,9 +468,6 @@ function handlePersonalInfo(chatId, userId, data) {
     if (field === 'gender') {
         session.data.gender = formOptions.gender[parseInt(index)];
         askForName(chatId, userId);
-    } else if (field === 'show') {
-        session.data.showProfile = formOptions.showProfile[parseInt(index)];
-        askForMode(chatId, userId);
     } else if (field === 'mode') {
         session.data.mode = formOptions.mode[parseInt(index)];
         askForMeetWith(chatId, userId);
@@ -449,21 +556,6 @@ Ketik alamat email yang valid:
     session.waitingFor = 'email';
 }
 
-function askForShowProfile(chatId, userId) {
-    const message = `
-👁️ **Tampilkan di Profil**
-
-Apakah ingin menampilkan informasi ini di profil?`;
-
-    const keyboard = createInlineKeyboard(formOptions.showProfile, 'personal_show', 2);
-    keyboard.inline_keyboard.push([
-        { text: '🔙 Kembali', callback_data: 'mulai' },
-        { text: '🏠 Menu Utama', callback_data: 'main_menu' }
-    ]);
-    
-    editOrSendMessage(chatId, userId, message, keyboard);
-}
-
 function askForMode(chatId, userId) {
     const message = `
 🎯 **Mode Penggunaan**
@@ -511,7 +603,7 @@ Kamu berharap menemukan:`;
 
 function askForHeight(chatId, userId) {
     const message = `
-📏 **Tinggi Badan - Step 2/8**
+📏 **Tinggi Badan - Step 2/9**
 
 Ketik tinggi badan dalam cm:
 
@@ -542,7 +634,7 @@ function showInterests(chatId, userId) {
     const selectedCount = session.selectedInterests.length;
     
     const message = `
-🎯 **Hal yang Kamu Suka - Step 3/8**
+🎯 **Hal yang Kamu Suka - Step 3/9**
 
 Pilih **5 hal** yang kamu suka **(${selectedCount}/5):**
 
@@ -603,7 +695,7 @@ function showValues(chatId, userId) {
     const selectedCount = session.selectedValues.length;
     
     const message = `
-💖 **Nilai yang Kamu Hargai - Step 4/8**
+💖 **Nilai yang Kamu Hargai - Step 4/9**
 
 Pilih **3 nilai** yang kamu hargai dalam seseorang **(${selectedCount}/3):**
 
@@ -654,7 +746,7 @@ function finishValues(chatId, userId) {
 
 function showLifestyle(chatId, userId) {
     const message = `
-🍷 **Lifestyle & Kebiasaan - Step 5/8**
+🍷 **Lifestyle & Kebiasaan - Step 5/9**
 
 Pilih kebiasaan minum alkohol:`;
 
@@ -698,7 +790,7 @@ Pilih kebiasaan merokok:`;
 
 function showKids(chatId, userId) {
     const message = `
-👶 **Anak & Rencana Keluarga - Step 6/8**
+👶 **Anak & Rencana Keluarga - Step 6/9**
 
 Pilih status tentang anak:`;
 
@@ -722,7 +814,7 @@ function handleKids(chatId, userId, data) {
 
 function askForReligion(chatId, userId) {
     const message = `
-🛐 **Agama - Step 7/8**
+🛐 **Agama - Step 7/9**
 
 Ketik agama kamu atau ketik "Skip" untuk melewati:
 
@@ -776,7 +868,7 @@ function showCommunity(chatId, userId) {
     const selectedCount = session.selectedCommunity.length;
     
     const message = `
-✊ **Komunitas & Isu Sosial - Step 8/8**
+✊ **Komunitas & Isu Sosial - Step 8/9**
 
 Pilih **maksimal 3** isu yang kamu dukung **(${selectedCount}/3):**
 
@@ -784,7 +876,7 @@ ${selectedCount > 0 ? '\n**✅ Sudah dipilih:**\n' + session.selectedCommunity.m
 
     const keyboard = createInlineKeyboard(formOptions.community, 'community', 1);
     keyboard.inline_keyboard.push([
-        { text: '✅ Selesai Form', callback_data: 'finish_community' }
+        { text: '✅ Selesai & Lanjut', callback_data: 'finish_community' }
     ]);
     keyboard.inline_keyboard.push([
         { text: '🔙 Kembali', callback_data: 'ask_politics' },
@@ -812,11 +904,198 @@ function handleCommunity(chatId, userId, data) {
 
 function finishCommunity(chatId, userId) {
     const session = userSessions.get(userId);
-    session.step = formSteps.completed;
-    completeForm(chatId, userId);
+    session.step = formSteps.prompts;
+    showPromptCategories(chatId, userId);
 }
 
-// Complete form and send data
+// ========================================
+// 💬 PROMPT SECTION (NEW)
+// ========================================
+
+function showPromptCategories(chatId, userId) {
+    const session = userSessions.get(userId);
+    const completedPrompts = session.prompts.length;
+    
+    const message = `
+💬 **Tentang Kamu - Step 9/10**
+
+**Wajib pilih minimal 3 prompt** untuk melengkapi profil **(${completedPrompts}/3):**
+
+${completedPrompts > 0 ? '\n**✅ Prompt selesai:**\n' + session.prompts.map(p => `• ${p.category}: ${p.prompt}`).join('\n') + '\n' : ''}
+
+Pilih kategori untuk melihat prompt:`;
+
+    const categories = formOptions.promptCategories;
+    const keyboard = {
+        inline_keyboard: [
+            [{ text: categories.lookingFor.name, callback_data: 'prompt_cat_lookingFor' }],
+            [{ text: categories.bitOfFun.name, callback_data: 'prompt_cat_bitOfFun' }],
+            [{ text: categories.dateNight.name, callback_data: 'prompt_cat_dateNight' }],
+            [{ text: categories.aboutMe.name, callback_data: 'prompt_cat_aboutMe' }],
+            [{ text: categories.selfCare.name, callback_data: 'prompt_cat_selfCare' }],
+            [{ text: categories.realTalk.name, callback_data: 'prompt_cat_realTalk' }]
+        ]
+    };
+    
+    // Add finish button if at least 3 prompts completed
+    if (completedPrompts >= 3) {
+        keyboard.inline_keyboard.push([
+            { text: '✅ Selesai Prompt & Lanjut', callback_data: 'finish_prompts' }
+        ]);
+    }
+    
+    keyboard.inline_keyboard.push([
+        { text: '⏭️ Skip Semua Prompt', callback_data: 'skip_all_prompts' }
+    ]);
+    keyboard.inline_keyboard.push([
+        { text: '🔙 Kembali', callback_data: 'show_community' },
+        { text: '🏠 Menu Utama', callback_data: 'main_menu' }
+    ]);
+    
+    editOrSendMessage(chatId, userId, message, keyboard);
+}
+
+function showPromptList(chatId, userId, categoryKey) {
+    const category = formOptions.promptCategories[categoryKey];
+    
+    const message = `
+${category.name}
+
+Pilih prompt yang ingin kamu jawab:`;
+
+    const keyboard = createInlineKeyboard(
+        category.prompts, 
+        `prompt_select_${categoryKey}`, 
+        1
+    );
+    
+    keyboard.inline_keyboard.push([
+        { text: '🔙 Kembali ke Kategori', callback_data: 'back_to_prompt_categories' }
+    ]);
+    
+    editOrSendMessage(chatId, userId, message, keyboard);
+}
+
+function selectPrompt(chatId, userId, categoryKey, promptIndex) {
+    const session = userSessions.get(userId);
+    const category = formOptions.promptCategories[categoryKey];
+    const selectedPrompt = category.prompts[promptIndex];
+    
+    const message = `
+📝 **Prompt dipilih:**
+${category.name}
+
+"**${selectedPrompt}**"
+
+Ketik jawaban kamu untuk prompt ini:
+
+💡 **Tips:** Jawab dengan jujur dan menarik agar profile kamu stand out!`;
+    
+    const keyboard = {
+        inline_keyboard: [
+            [{ text: '🔙 Pilih Prompt Lain', callback_data: `prompt_cat_${categoryKey}` }],
+            [{ text: '🏠 Menu Utama', callback_data: 'main_menu' }]
+        ]
+    };
+    
+    editOrSendMessage(chatId, userId, message, keyboard);
+    
+    // Set waiting for prompt answer
+    session.waitingFor = `prompt_answer_${categoryKey}_${promptIndex}`;
+}
+
+function finishPrompts(chatId, userId) {
+    const session = userSessions.get(userId);
+    session.step = formSteps.photos;
+    showPhotoUpload(chatId, userId);
+}
+
+// ========================================
+// 📸 PHOTO UPLOAD SECTION (NEW)
+// ========================================
+
+function showPhotoUpload(chatId, userId) {
+    const session = userSessions.get(userId);
+    const uploadedPhotos = session.photos.length;
+    
+    const message = `
+📸 **Upload Foto - Step 10/10**
+
+**Wajib upload minimal 4 foto** untuk akun dating **(${uploadedPhotos}/4):**
+
+${uploadedPhotos > 0 ? '\n**✅ Foto terupload:** ' + uploadedPhotos + ' foto\n' : ''}
+
+**📝 Tips foto yang bagus:**
+• Foto wajah yang jelas (minimal 1)
+• Foto full body (minimal 1) 
+• Foto aktivitas/hobi
+• Foto dengan teman/keluarga
+• Hindari foto blur atau gelap
+
+**Cara upload:**
+Kirim foto satu per satu ke chat ini`;
+
+    const keyboard = {
+        inline_keyboard: []
+    };
+    
+    // Add finish button if at least 4 photos uploaded
+    if (uploadedPhotos >= 4) {
+        keyboard.inline_keyboard.push([
+            { text: '✅ Selesai & Kirim Data', callback_data: 'finish_photos' }
+        ]);
+    }
+    
+    keyboard.inline_keyboard.push([
+        { text: `📊 Foto: ${uploadedPhotos}/4`, callback_data: 'show_photo_count' }
+    ]);
+    keyboard.inline_keyboard.push([
+        { text: '🔙 Kembali', callback_data: 'back_to_prompts' },
+        { text: '🏠 Menu Utama', callback_data: 'main_menu' }
+    ]);
+    
+    editOrSendMessage(chatId, userId, message, keyboard);
+}
+
+function handlePhotoUpload(chatId, userId, photo) {
+    const session = userSessions.get(userId);
+    
+    if (session.step === formSteps.photos) {
+        session.photos.push({
+            file_id: photo.file_id,
+            file_unique_id: photo.file_unique_id,
+            width: photo.width,
+            height: photo.height
+        });
+        
+        const uploadedCount = session.photos.length;
+        const message = `✅ **Foto ${uploadedCount} berhasil diupload!**\n\n${uploadedCount >= 4 ? '🎉 Sudah mencukupi! Klik "Selesai" untuk lanjut.' : `Masih butuh ${4 - uploadedCount} foto lagi.`}`;
+        
+        bot.sendMessage(chatId, message, { parse_mode: 'Markdown' });
+        
+        // Refresh photo upload menu
+        setTimeout(() => {
+            showPhotoUpload(chatId, userId);
+        }, 2000);
+    }
+}
+
+function finishPhotos(chatId, userId) {
+    const session = userSessions.get(userId);
+    if (session.photos.length >= 4) {
+        session.step = formSteps.completed;
+        completeForm(chatId, userId);
+    } else {
+        bot.sendMessage(chatId, `❌ **Upload minimal 4 foto!** (Sekarang: ${session.photos.length}/4)`, {
+            parse_mode: 'Markdown'
+        });
+    }
+}
+
+// ========================================
+// ✅ COMPLETE FORM
+// ========================================
+
 function completeForm(chatId, userId) {
     const session = userSessions.get(userId);
     const userData = session.data;
@@ -854,6 +1133,11 @@ ${session.selectedValues.map(item => `• ${item}`).join('\n')}
 **✊ Community Issues (${session.selectedCommunity.length}/3):**
 ${session.selectedCommunity.map(item => `• ${item}`).join('\n')}
 
+**💬 Prompts (${session.prompts.length}):**
+${session.prompts.map(p => `• ${p.category}: "${p.answer}"`).join('\n')}
+
+**📸 Foto:** ${session.photos.length} foto terupload
+
 ---
 **📞 Langkah Selanjutnya:**
 Silakan hubungi admin untuk proses pembuatan akun!`;
@@ -884,7 +1168,6 @@ async function sendToChannelAndAdmin(userData, session, userId, chatId) {
 **👤 Customer Info:**
 • User ID: ${userId}
 • Chat ID: ${chatId}
-• Username: @${userData.username || 'N/A'}
 
 **📋 Order Details:**
 • Platform: ${userData.platform}
@@ -898,6 +1181,9 @@ async function sendToChannelAndAdmin(userData, session, userId, chatId) {
 • Interests: ${session.selectedInterests.join(', ')}
 • Values: ${session.selectedValues.join(', ')}
 • Community: ${session.selectedCommunity.join(', ')}
+
+**💬 Prompts:** ${session.prompts.length} prompts completed
+**📸 Photos:** ${session.photos.length} photos uploaded
 
 **📞 Next Action:** Contact customer for payment & processing
 
@@ -942,6 +1228,8 @@ bot.on('callback_query', (callbackQuery) => {
             selectedInterests: [],
             selectedValues: [],
             selectedCommunity: [],
+            prompts: [],
+            photos: [],
             waitingFor: null
         });
     }
@@ -994,6 +1282,21 @@ bot.on('callback_query', (callbackQuery) => {
         case 'finish_community':
             finishCommunity(chatId, userId);
             break;
+        case 'back_to_prompt_categories':
+            showPromptCategories(chatId, userId);
+            break;
+        case 'finish_prompts':
+            finishPrompts(chatId, userId);
+            break;
+        case 'skip_all_prompts':
+            finishPrompts(chatId, userId);
+            break;
+        case 'back_to_prompts':
+            showPromptCategories(chatId, userId);
+            break;
+        case 'finish_photos':
+            finishPhotos(chatId, userId);
+            break;
         default:
             // Handle prefixed callbacks
             if (data.startsWith('platform_')) {
@@ -1012,6 +1315,14 @@ bot.on('callback_query', (callbackQuery) => {
                 handlePolitics(chatId, userId, data);
             } else if (data.startsWith('community_')) {
                 handleCommunity(chatId, userId, data);
+            } else if (data.startsWith('prompt_cat_')) {
+                const categoryKey = data.replace('prompt_cat_', '');
+                showPromptList(chatId, userId, categoryKey);
+            } else if (data.startsWith('prompt_select_')) {
+                const parts = data.split('_');
+                const categoryKey = parts[2];
+                const promptIndex = parseInt(parts[3]);
+                selectPrompt(chatId, userId, categoryKey, promptIndex);
             }
             break;
     }
@@ -1020,16 +1331,17 @@ bot.on('callback_query', (callbackQuery) => {
 });
 
 // ========================================
-// 💬 TEXT MESSAGE HANDLER (WITH VALIDATION)
+// 💬 MESSAGE HANDLERS
 // ========================================
 
+// Handle text messages (for input fields)
 bot.on('message', (msg) => {
     const chatId = msg.chat.id;
     const userId = msg.from.id;
     const text = msg.text;
 
-    // Skip if it's a command or callback
-    if (!text || text.startsWith('/')) return;
+    // Skip if it's a command
+    if (text && text.startsWith('/')) return;
 
     // Check if user has active session
     if (!userSessions.has(userId)) return;
@@ -1066,7 +1378,7 @@ bot.on('message', (msg) => {
             if (validateEmail(text)) {
                 session.data.email = text.toLowerCase().trim();
                 session.waitingFor = null;
-                askForShowProfile(chatId, userId);
+                askForMode(chatId, userId);
             } else {
                 bot.sendMessage(chatId, '❌ **Email tidak valid!** Pastikan menggunakan format yang benar (contoh: user@gmail.com)', {
                     parse_mode: 'Markdown'
@@ -1094,8 +1406,44 @@ bot.on('message', (msg) => {
             break;
             
         default:
-            // No waiting input, ignore
+            // Handle prompt answers
+            if (session.waitingFor && session.waitingFor.startsWith('prompt_answer_')) {
+                const parts = session.waitingFor.split('_');
+                const categoryKey = parts[2];
+                const promptIndex = parseInt(parts[3]);
+                
+                const category = formOptions.promptCategories[categoryKey];
+                const selectedPrompt = category.prompts[promptIndex];
+                
+                // Save prompt answer
+                session.prompts.push({
+                    category: category.name,
+                    prompt: selectedPrompt,
+                    answer: text.trim()
+                });
+                
+                session.waitingFor = null;
+                
+                bot.sendMessage(chatId, '✅ **Jawaban tersimpan!** Kamu bisa pilih prompt lain atau lanjut ke step berikutnya.', {
+                    parse_mode: 'Markdown'
+                });
+                
+                setTimeout(() => {
+                    showPromptCategories(chatId, userId);
+                }, 2000);
+            }
             break;
+    }
+});
+
+// Handle photo uploads
+bot.on('photo', (msg) => {
+    const chatId = msg.chat.id;
+    const userId = msg.from.id;
+    const photo = msg.photo[msg.photo.length - 1]; // Get highest resolution
+    
+    if (userSessions.has(userId)) {
+        handlePhotoUpload(chatId, userId, photo);
     }
 });
 
@@ -1105,12 +1453,15 @@ bot.on('message', (msg) => {
 
 console.log('🤖 Bot Jual Beli Akun Dating sudah aktif!');
 console.log('📱 Siap melayani pesanan akun dating...');
-console.log('🔧 Fitur:');
+console.log('🔧 Fitur Update:');
 console.log('   ✅ Edit message (anti-spam)');
 console.log('   ✅ Validasi input lengkap'); 
-console.log('   ✅ Navigation buttons bekerja');
+console.log('   ✅ Navigation buttons fixed');
+console.log('   ✅ Prompt categories (3 wajib)');
+console.log('   ✅ Photo upload (4 wajib)');
 console.log('   ✅ Send ke channel via ID');
-console.log('   ✅ Inline keyboard responsive');
+console.log('   ❌ WhatsApp contact removed');
+console.log('   ❌ Show profile option removed');
 
 // Handle polling errors
 bot.on('polling_error', (error) => {
