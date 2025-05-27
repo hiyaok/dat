@@ -15,7 +15,6 @@ const bot = new TelegramBot(BOT_TOKEN, { polling: true });
 // ========================================
 const userSessions = new Map();
 const messageIds = new Map(); // Store message IDs for editing
-const lastBotMessages = new Map(); // Store last bot message for each user
 
 const formSteps = {
     platform: 'platform',
@@ -221,7 +220,7 @@ function createInlineKeyboard(options, prefix, columns = 2) {
     return { inline_keyboard: keyboard };
 }
 
-// Edit message instead of sending new one - FIXED
+// Edit message instead of sending new one
 async function editOrSendMessage(chatId, userId, text, keyboard = null) {
     const options = {
         parse_mode: 'Markdown',
@@ -229,52 +228,43 @@ async function editOrSendMessage(chatId, userId, text, keyboard = null) {
     };
 
     try {
-        const lastMessageId = lastBotMessages.get(userId);
-        
-        if (lastMessageId) {
-            try {
-                await bot.editMessageText(text, {
-                    chat_id: chatId,
-                    message_id: lastMessageId,
-                    ...options
-                });
-                return;
-            } catch (editError) {
-                // If edit fails, send new message
-                console.log('Edit failed, sending new message');
-            }
+        const messageId = messageIds.get(userId);
+        if (messageId) {
+            await bot.editMessageText(text, {
+                chat_id: chatId,
+                message_id: messageId,
+                ...options
+            });
+        } else {
+            const sentMessage = await bot.sendMessage(chatId, text, options);
+            messageIds.set(userId, sentMessage.message_id);
         }
-        
-        // Send new message
-        const sentMessage = await bot.sendMessage(chatId, text, options);
-        lastBotMessages.set(userId, sentMessage.message_id);
-        
     } catch (error) {
-        console.error('Error in editOrSendMessage:', error);
+        // If edit fails, send new message
+        try {
+            const sentMessage = await bot.sendMessage(chatId, text, options);
+            messageIds.set(userId, sentMessage.message_id);
+        } catch (sendError) {
+            console.error('Error sending message:', sendError);
+        }
     }
 }
 
-// Send new message (for inputs and notifications) - NEW
-async function sendNewMessage(chatId, userId, text, keyboard = null) {
-    const options = {
-        parse_mode: 'Markdown',
-        reply_markup: keyboard
-    };
-
-    try {
-        const sentMessage = await bot.sendMessage(chatId, text, options);
-        // Update last bot message
-        lastBotMessages.set(userId, sentMessage.message_id);
-        return sentMessage;
-    } catch (error) {
-        console.error('Error sending message:', error);
-    }
-}
-
-// Get user info
+// Get user info with safe handling
 function getUserInfo(user) {
+    if (!user || typeof user !== 'object') {
+        return {
+            id: 'unknown',
+            username: 'N/A',
+            first_name: 'N/A',
+            last_name: 'N/A',
+            language_code: 'N/A',
+            is_bot: false
+        };
+    }
+    
     return {
-        id: user.id,
+        id: user.id || 'unknown',
         username: user.username || 'N/A',
         first_name: user.first_name || 'N/A',
         last_name: user.last_name || 'N/A',
@@ -283,17 +273,20 @@ function getUserInfo(user) {
     };
 }
 
-// Validation functions
+// Validation functions - WITH NULL CHECKS
 function validateEmail(email) {
+    if (!email || typeof email !== 'string') return false;
     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-    return emailRegex.test(email);
+    return emailRegex.test(email.trim());
 }
 
 function validateDate(date) {
+    if (!date || typeof date !== 'string') return false;
     const dateRegex = /^(0[1-9]|1[0-2])\/(0[1-9]|[12][0-9]|3[01])\/(19|20)\d{2}$/;
-    if (!dateRegex.test(date)) return false;
+    const trimmedDate = date.trim();
+    if (!dateRegex.test(trimmedDate)) return false;
     
-    const [month, day, year] = date.split('/').map(Number);
+    const [month, day, year] = trimmedDate.split('/').map(Number);
     const dateObj = new Date(year, month - 1, day);
     
     return dateObj.getFullYear() === year && 
@@ -302,12 +295,15 @@ function validateDate(date) {
 }
 
 function validateHeight(height) {
-    const num = parseInt(height);
-    return num >= 100 && num <= 250; // Reasonable height range
+    if (!height || typeof height !== 'string') return false;
+    const num = parseInt(height.trim());
+    return !isNaN(num) && num >= 100 && num <= 250;
 }
 
 function validateName(name) {
-    return name && name.trim().length >= 2 && name.trim().length <= 50;
+    if (!name || typeof name !== 'string') return false;
+    const trimmedName = name.trim();
+    return trimmedName.length >= 2 && trimmedName.length <= 50;
 }
 
 // ========================================
@@ -342,7 +338,7 @@ Ketik /mulai atau klik tombol di bawah ini untuk lihat daftar akun & harga`;
         ]
     };
 
-    sendNewMessage(chatId, userId, welcomeMessage, keyboard);
+    editOrSendMessage(chatId, userId, welcomeMessage, keyboard);
 });
 
 // Handler untuk command /mulai
@@ -398,7 +394,8 @@ function contactAdmin(chatId, userId) {
 Silakan klik tombol di bawah untuk chat langsung dengan admin kami:
 
 📞 **Kontak tersedia:**
-• Telegram: @SYDONIA08
+• Telegram: Chat langsung
+• Email: admin@datingbot.com
 
 ⏰ **Jam operasional:**
 Senin - Minggu: 08:00 - 22:00 WIB`;
@@ -434,10 +431,10 @@ function showInfoFAQ(chatId, userId) {
   A: 4 hari kerja setelah pembayaran
 
 • **Q: Apakah ada garansi?**
-  A: Ya, garansi akun aktif
+  A: Ya, garansi 30 hari akun aktif
 
 • **Q: Bagaimana cara pembayaran?**
-  A: Transfer bank, OVO, DANA, atau GoPay DLL`;
+  A: Transfer bank, OVO, DANA, atau GoPay`;
 
     const keyboard = {
         inline_keyboard: [
@@ -479,7 +476,7 @@ function handlePlatformSelection(chatId, userId, data, user) {
     const message = `
 ✅ **Platform dipilih: ${platforms[platform]}**
 
-📝 **Personal Info - Step 1/10**
+📝 **Personal Info - Step 1/9**
 
 Mari kita mulai dengan informasi dasar kamu:
 
@@ -531,7 +528,7 @@ Ketik nama depan yang ingin digunakan untuk akun dating:
         ]
     };
     
-    sendNewMessage(chatId, userId, message, keyboard);
+    editOrSendMessage(chatId, userId, message, keyboard);
     
     const session = userSessions.get(userId);
     session.waitingFor = 'name';
@@ -557,7 +554,7 @@ Ketik tanggal lahir dalam format: **MM/DD/YYYY**
         ]
     };
     
-    sendNewMessage(chatId, userId, message, keyboard);
+    editOrSendMessage(chatId, userId, message, keyboard);
     
     const session = userSessions.get(userId);
     session.waitingFor = 'birthdate';
@@ -583,7 +580,7 @@ Ketik alamat email yang valid:
         ]
     };
     
-    sendNewMessage(chatId, userId, message, keyboard);
+    editOrSendMessage(chatId, userId, message, keyboard);
     
     const session = userSessions.get(userId);
     session.waitingFor = 'email';
@@ -636,7 +633,7 @@ Kamu berharap menemukan:`;
 
 function askForHeight(chatId, userId) {
     const message = `
-📏 **Tinggi Badan - Step 2/10**
+📏 **Tinggi Badan - Step 2/9**
 
 Ketik tinggi badan dalam cm:
 
@@ -654,7 +651,7 @@ Ketik tinggi badan dalam cm:
         ]
     };
     
-    sendNewMessage(chatId, userId, message, keyboard);
+    editOrSendMessage(chatId, userId, message, keyboard);
     
     const session = userSessions.get(userId);
     session.waitingFor = 'height';
@@ -667,7 +664,7 @@ function showInterests(chatId, userId) {
     const selectedCount = session.selectedInterests.length;
     
     const message = `
-🎯 **Hal yang Kamu Suka - Step 3/10**
+🎯 **Hal yang Kamu Suka - Step 3/9**
 
 Pilih **5 hal** yang kamu suka **(${selectedCount}/5):**
 
@@ -718,7 +715,7 @@ function finishInterests(chatId, userId) {
         showValues(chatId, userId);
     } else {
         const message = `❌ **Pilih tepat 5 hal!** (Sekarang: ${session.selectedInterests.length}/5)`;
-        bot.answerCallbackQuery(callback_query.id, { text: message, show_alert: true });
+        bot.sendMessage(chatId, message, { parse_mode: 'Markdown' });
     }
 }
 
@@ -728,7 +725,7 @@ function showValues(chatId, userId) {
     const selectedCount = session.selectedValues.length;
     
     const message = `
-💖 **Nilai yang Kamu Hargai - Step 4/10**
+💖 **Nilai yang Kamu Hargai - Step 4/9**
 
 Pilih **3 nilai** yang kamu hargai dalam seseorang **(${selectedCount}/3):**
 
@@ -779,7 +776,7 @@ function finishValues(chatId, userId) {
 
 function showLifestyle(chatId, userId) {
     const message = `
-🍷 **Lifestyle & Kebiasaan - Step 5/10**
+🍷 **Lifestyle & Kebiasaan - Step 5/9**
 
 Pilih kebiasaan minum alkohol:`;
 
@@ -823,7 +820,7 @@ Pilih kebiasaan merokok:`;
 
 function showKids(chatId, userId) {
     const message = `
-👶 **Anak & Rencana Keluarga - Step 6/10**
+👶 **Anak & Rencana Keluarga - Step 6/9**
 
 Pilih status tentang anak:`;
 
@@ -847,7 +844,7 @@ function handleKids(chatId, userId, data) {
 
 function askForReligion(chatId, userId) {
     const message = `
-🛐 **Agama - Step 7/10**
+🛐 **Agama - Step 7/9**
 
 Ketik agama kamu atau ketik "Skip" untuk melewati:
 
@@ -866,7 +863,7 @@ Ketik agama kamu atau ketik "Skip" untuk melewati:
         ]
     };
     
-    sendNewMessage(chatId, userId, message, keyboard);
+    editOrSendMessage(chatId, userId, message, keyboard);
     
     const session = userSessions.get(userId);
     session.waitingFor = 'religion';
@@ -883,7 +880,7 @@ function handlePolitics(chatId, userId, data) {
 
 function askForPolitics(chatId, userId) {
     const message = `
-🗳️ **Politik - Step 8/10**
+🗳️ **Politik**
 
 Pilih pandangan politik:`;
 
@@ -901,7 +898,7 @@ function showCommunity(chatId, userId) {
     const selectedCount = session.selectedCommunity.length;
     
     const message = `
-✊ **Komunitas & Isu Sosial - Step 9/10**
+✊ **Komunitas & Isu Sosial - Step 8/9**
 
 Pilih **maksimal 3** isu yang kamu dukung **(${selectedCount}/3):**
 
@@ -950,7 +947,7 @@ function showPromptCategories(chatId, userId) {
     const completedPrompts = session.prompts.length;
     
     const message = `
-💬 **Tentang Kamu - Step 10/11**
+💬 **Tentang Kamu - Step 9/10**
 
 **Wajib pilih minimal 3 prompt** untuk melengkapi profil **(${completedPrompts}/3):**
 
@@ -1031,7 +1028,7 @@ Ketik jawaban kamu untuk prompt ini:
         ]
     };
     
-    sendNewMessage(chatId, userId, message, keyboard);
+    editOrSendMessage(chatId, userId, message, keyboard);
     
     // Set waiting for prompt answer
     session.waitingFor = `prompt_answer_${categoryKey}_${promptIndex}`;
@@ -1044,7 +1041,7 @@ function finishPrompts(chatId, userId) {
 }
 
 // ========================================
-// 📸 PHOTO UPLOAD SECTION - FIXED
+// 📸 PHOTO UPLOAD SECTION
 // ========================================
 
 function showPhotoUpload(chatId, userId) {
@@ -1052,7 +1049,7 @@ function showPhotoUpload(chatId, userId) {
     const uploadedPhotos = session.photos.length;
     
     const message = `
-📸 **Upload Foto - Step 11/11**
+📸 **Upload Foto - Step 10/10**
 
 **Wajib upload minimal 4 foto** untuk akun dating **(${uploadedPhotos}/4):**
 
@@ -1088,54 +1085,60 @@ Kirim foto satu per satu ke chat ini`;
     ]);
     
     editOrSendMessage(chatId, userId, message, keyboard);
-    
-    // Set step to photos
-    session.step = formSteps.photos;
 }
 
 function handlePhotoUpload(chatId, userId, photo) {
-    const session = userSessions.get(userId);
-    
-    if (!session || session.step !== formSteps.photos) {
-        return; // Ignore photo if not in photo upload step
+    try {
+        const session = userSessions.get(userId);
+        
+        if (!session || !photo || session.step !== formSteps.photos) {
+            return;
+        }
+        
+        // Ensure photos array exists
+        if (!session.photos) {
+            session.photos = [];
+        }
+        
+        session.photos.push({
+            file_id: photo.file_id || '',
+            file_unique_id: photo.file_unique_id || '',
+            width: photo.width || 0,
+            height: photo.height || 0,
+            file_size: photo.file_size || 0
+        });
+        
+        const uploadedCount = session.photos.length;
+        const message = `✅ **Foto ${uploadedCount} berhasil diupload!**\n\n${uploadedCount >= 4 ? '🎉 Sudah mencukupi! Klik "Selesai" untuk lanjut.' : `Masih butuh ${4 - uploadedCount} foto lagi.`}`;
+        
+        bot.sendMessage(chatId, message, { parse_mode: 'Markdown' });
+        
+        // Refresh photo upload menu
+        setTimeout(() => {
+            showPhotoUpload(chatId, userId);
+        }, 2000);
+    } catch (error) {
+        console.error('❌ Error handling photo upload:', error.message);
+        bot.sendMessage(chatId, '❌ **Error saat upload foto.** Coba lagi.', {
+            parse_mode: 'Markdown'
+        });
     }
-    
-    // Store photo data
-    session.photos.push({
-        file_id: photo.file_id,
-        file_unique_id: photo.file_unique_id,
-        width: photo.width,
-        height: photo.height,
-        file_size: photo.file_size || 0
-    });
-    
-    const uploadedCount = session.photos.length;
-    const message = `✅ **Foto ${uploadedCount} berhasil diupload!**\n\n${uploadedCount >= 4 ? '🎉 Sudah mencukupi! Klik "Selesai" untuk lanjut.' : `Masih butuh ${4 - uploadedCount} foto lagi.`}`;
-    
-    // Send confirmation as NEW message
-    bot.sendMessage(chatId, message, { parse_mode: 'Markdown' });
-    
-    // Refresh photo upload menu after delay
-    setTimeout(() => {
-        showPhotoUpload(chatId, userId);
-    }, 1500);
 }
 
-function finishPhotos(chatId, userId, callbackQuery) {
+function finishPhotos(chatId, userId) {
     const session = userSessions.get(userId);
     if (session.photos.length >= 4) {
         session.step = formSteps.completed;
         completeForm(chatId, userId);
     } else {
-        bot.answerCallbackQuery(callbackQuery.id, {
-            text: `❌ Upload minimal 4 foto! (Sekarang: ${session.photos.length}/4)`,
-            show_alert: true
+        bot.sendMessage(chatId, `❌ **Upload minimal 4 foto!** (Sekarang: ${session.photos.length}/4)`, {
+            parse_mode: 'Markdown'
         });
     }
 }
 
 // ========================================
-// ✅ COMPLETE FORM - FIXED
+// ✅ COMPLETE FORM
 // ========================================
 
 function completeForm(chatId, userId) {
@@ -1182,7 +1185,7 @@ ${session.prompts.map(p => `• ${p.category}: "${p.answer}"`).join('\n')}
 
 ---
 **📞 Langkah Selanjutnya:**
-Data kamu sedang dikirim ke admin. Silakan tunggu konfirmasi!`;
+Silakan hubungi admin untuk proses pembuatan akun!`;
 
     const keyboard = {
         inline_keyboard: [
@@ -1192,304 +1195,311 @@ Data kamu sedang dikirim ke admin. Silakan tunggu konfirmasi!`;
         ]
     };
 
-    sendNewMessage(chatId, userId, summaryMessage, keyboard);
+    editOrSendMessage(chatId, userId, summaryMessage, keyboard);
 
     // Send data to channel and admin
     sendToChannelAndAdmin(userData, session, userId, chatId);
     
     // Clear session
     userSessions.delete(userId);
-    lastBotMessages.delete(userId);
+    messageIds.delete(userId);
 }
 
 // ========================================
-// 📤 SEND DATA TO CHANNEL AND ADMIN - FIXED
+// 📤 SEND DATA TO CHANNEL AND ADMIN (ENHANCED)
 // ========================================
 
 async function sendToChannelAndAdmin(userData, session, userId, chatId) {
-    const userInfo = session.userInfo;
-    const currentDate = new Date().toLocaleString('id-ID', {
-        timeZone: 'Asia/Jakarta',
-        year: 'numeric',
-        month: '2-digit',
-        day: '2-digit',
-        hour: '2-digit',
-        minute: '2-digit'
-    });
+    try {
+        const userInfo = session.userInfo || {};
+        const currentDate = new Date().toLocaleString('id-ID', {
+            timeZone: 'Asia/Jakarta',
+            year: 'numeric',
+            month: '2-digit',
+            day: '2-digit',
+            hour: '2-digit',
+            minute: '2-digit'
+        });
 
-    // Create comprehensive data message
-    const dataMessage = `
+        // Safe data extraction
+        const safeUserData = userData || {};
+        const safeSession = session || {};
+        const interests = safeSession.selectedInterests || [];
+        const values = safeSession.selectedValues || [];
+        const community = safeSession.selectedCommunity || [];
+        const prompts = safeSession.prompts || [];
+        const photos = safeSession.photos || [];
+
+        // Create comprehensive data message
+        const dataMessage = `
 🔔 **NEW ORDER - AKUN DATING**
 
 **👤 CUSTOMER INFO:**
-• User ID: \`${userInfo.id}\`
-• Username: @${userInfo.username}
-• First Name: ${userInfo.first_name}
-• Last Name: ${userInfo.last_name}
-• Language: ${userInfo.language_code}
+• User ID: \`${userInfo.id || userId}\`
+• Username: @${userInfo.username || 'N/A'}
+• First Name: ${userInfo.first_name || 'N/A'}
+• Last Name: ${userInfo.last_name || 'N/A'}
+• Language: ${userInfo.language_code || 'N/A'}
 • Chat ID: \`${chatId}\`
 • Is Bot: ${userInfo.is_bot ? 'Yes' : 'No'}
 • Order Time: ${currentDate}
 
 **📋 ORDER DETAILS:**
-• Platform: ${userData.platform}
-• Nama: ${userData.firstName || 'N/A'}
-• Email: ${userData.email || 'N/A'}
-• Gender: ${userData.gender || 'N/A'}
-• Tinggi: ${userData.height || 'N/A'} cm
-• Tanggal Lahir: ${userData.birthDate || 'N/A'}
-• Mode: ${userData.mode || 'N/A'}
-• Ingin Bertemu: ${userData.meetWith || 'N/A'}
-• Tujuan: ${userData.purpose || 'N/A'}
+• Platform: ${safeUserData.platform || 'N/A'}
+• Nama: ${safeUserData.firstName || 'N/A'}
+• Email: ${safeUserData.email || 'N/A'}
+• Gender: ${safeUserData.gender || 'N/A'}
+• Tinggi: ${safeUserData.height || 'N/A'} cm
+• Tanggal Lahir: ${safeUserData.birthDate || 'N/A'}
+• Mode: ${safeUserData.mode || 'N/A'}
+• Ingin Bertemu: ${safeUserData.meetWith || 'N/A'}
+• Tujuan: ${safeUserData.purpose || 'N/A'}
 
 **🎯 PREFERENCES:**
-• Interests (${session.selectedInterests.length}/5): ${session.selectedInterests.join(', ')}
-• Values (${session.selectedValues.length}/3): ${session.selectedValues.join(', ')}
-• Community Issues (${session.selectedCommunity.length}/3): ${session.selectedCommunity.join(', ')}
+• Interests (${interests.length}/5): ${interests.join(', ') || 'None'}
+• Values (${values.length}/3): ${values.join(', ') || 'None'}
+• Community Issues (${community.length}/3): ${community.join(', ') || 'None'}
 
 **🍷 LIFESTYLE:**
-• Alkohol: ${userData.alcohol || 'N/A'}
-• Merokok: ${userData.smoking || 'N/A'}
-• Anak: ${userData.kids || 'N/A'}
-• Agama: ${userData.religion || 'N/A'}
-• Politik: ${userData.politics || 'N/A'}
+• Alkohol: ${safeUserData.alcohol || 'N/A'}
+• Merokok: ${safeUserData.smoking || 'N/A'}
+• Anak: ${safeUserData.kids || 'N/A'}
+• Agama: ${safeUserData.religion || 'N/A'}
+• Politik: ${safeUserData.politics || 'N/A'}
 
-**💬 PROMPTS (${session.prompts.length}):**
-${session.prompts.length > 0 ? session.prompts.map((p, i) => `${i+1}. ${p.category}: "${p.prompt}"\n   Answer: "${p.answer}"`).join('\n') : 'No prompts completed'}
+**💬 PROMPTS (${prompts.length}):**
+${prompts.length > 0 ? prompts.map((p, i) => `${i+1}. ${p.category || 'Unknown'}: "${p.prompt || 'N/A'}"\n   Answer: "${p.answer || 'N/A'}"`).join('\n') : 'No prompts completed'}
 
-**📸 PHOTOS:** ${session.photos.length} photos uploaded
+**📸 PHOTOS:** ${photos.length} photos uploaded
 
 **📞 NEXT ACTION:** Contact customer for payment & processing
 
-#NewOrder #DatingBot #Order${userInfo.id}`;
+#NewOrder #DatingBot #Order${userInfo.id || userId}`;
 
-    // Send to channel - FIXED WITH PROPER ERROR HANDLING
-    try {
-        if (CHANNEL_ID) {
-            await bot.sendMessage(CHANNEL_ID, dataMessage, { parse_mode: 'Markdown' });
-            
-            // Send photos to channel if any
-            if (session.photos.length > 0) {
-                await bot.sendMessage(CHANNEL_ID, `📸 **PHOTOS FOR ORDER #${userInfo.id}:**`, { parse_mode: 'Markdown' });
+        // Send to channel
+        try {
+            if (CHANNEL_ID) {
+                await bot.sendMessage(CHANNEL_ID, dataMessage, { parse_mode: 'Markdown' });
                 
-                // Create media group for better presentation
-                const mediaGroup = session.photos.map((photo, index) => ({
-                    type: 'photo',
-                    media: photo.file_id,
-                    caption: index === 0 ? `Photos for Order #${userInfo.id} - User: @${userInfo.username}` : undefined
-                }));
-                
-                try {
-                    await bot.sendMediaGroup(CHANNEL_ID, mediaGroup);
-                } catch (groupError) {
-                    // If media group fails, send individually
-                    for (let i = 0; i < session.photos.length; i++) {
-                        const photo = session.photos[i];
-                        try {
-                            await bot.sendPhoto(CHANNEL_ID, photo.file_id, {
-                                caption: `Photo ${i+1}/${session.photos.length} - Order #${userInfo.id}\nSize: ${photo.width}x${photo.height}px`
-                            });
-                        } catch (photoError) {
-                            console.error(`Error sending photo ${i+1} to channel:`, photoError.message);
+                // Send photos to channel if any
+                if (photos.length > 0) {
+                    await bot.sendMessage(CHANNEL_ID, `📸 **PHOTOS FOR ORDER #${userInfo.id || userId}:**`, { parse_mode: 'Markdown' });
+                    
+                    for (let i = 0; i < photos.length; i++) {
+                        const photo = photos[i];
+                        if (photo && photo.file_id) {
+                            try {
+                                await bot.sendPhoto(CHANNEL_ID, photo.file_id, {
+                                    caption: `Photo ${i+1}/${photos.length} - Order #${userInfo.id || userId}\nSize: ${photo.width || 0}x${photo.height || 0}px`
+                                });
+                            } catch (photoError) {
+                                console.error(`Error sending photo ${i+1} to channel:`, photoError.message);
+                            }
                         }
                     }
                 }
+                
+                console.log('✅ Data sent to channel successfully');
             }
-            
-            console.log('✅ Data sent to channel successfully');
+        } catch (error) {
+            console.error('❌ Error sending to channel:', error.message);
         }
-    } catch (error) {
-        console.error('❌ Error sending to channel:', error.message);
-    }
 
-    // Send to admin - FIXED WITH PROPER ERROR HANDLING
-    try {
-        if (ADMIN_ID) {
-            await bot.sendMessage(ADMIN_ID, dataMessage, { parse_mode: 'Markdown' });
-            
-            // Send photos to admin if any
-            if (session.photos.length > 0) {
-                await bot.sendMessage(ADMIN_ID, `📸 **PHOTOS FOR ORDER #${userInfo.id}:**`, { parse_mode: 'Markdown' });
+        // Send to admin
+        try {
+            if (ADMIN_ID) {
+                await bot.sendMessage(ADMIN_ID, dataMessage, { parse_mode: 'Markdown' });
                 
-                // Create media group for better presentation
-                const mediaGroup = session.photos.map((photo, index) => ({
-                    type: 'photo',
-                    media: photo.file_id,
-                    caption: index === 0 ? `Photos for Order #${userInfo.id}\nUser: @${userInfo.username} (${userInfo.first_name})` : undefined
-                }));
-                
-                try {
-                    await bot.sendMediaGroup(ADMIN_ID, mediaGroup);
-                } catch (groupError) {
-                    // If media group fails, send individually
-                    for (let i = 0; i < session.photos.length; i++) {
-                        const photo = session.photos[i];
-                        try {
-                            await bot.sendPhoto(ADMIN_ID, photo.file_id, {
-                                caption: `Photo ${i+1}/${session.photos.length} - Order #${userInfo.id}\nUser: @${userInfo.username} (${userInfo.first_name})\nSize: ${photo.width}x${photo.height}px\nFile Size: ${(photo.file_size/1024).toFixed(1)}KB`
-                            });
-                        } catch (photoError) {
-                            console.error(`Error sending photo ${i+1} to admin:`, photoError.message);
+                // Send photos to admin if any
+                if (photos.length > 0) {
+                    await bot.sendMessage(ADMIN_ID, `📸 **PHOTOS FOR ORDER #${userInfo.id || userId}:**`, { parse_mode: 'Markdown' });
+                    
+                    for (let i = 0; i < photos.length; i++) {
+                        const photo = photos[i];
+                        if (photo && photo.file_id) {
+                            try {
+                                await bot.sendPhoto(ADMIN_ID, photo.file_id, {
+                                    caption: `Photo ${i+1}/${photos.length} - Order #${userInfo.id || userId}\nUser: @${userInfo.username || 'N/A'} (${userInfo.first_name || 'N/A'})\nSize: ${photo.width || 0}x${photo.height || 0}px\nFile Size: ${((photo.file_size || 0)/1024).toFixed(1)}KB`
+                                });
+                            } catch (photoError) {
+                                console.error(`Error sending photo ${i+1} to admin:`, photoError.message);
+                            }
                         }
                     }
                 }
+                
+                console.log('✅ Data sent to admin successfully');
             }
-            
-            console.log('✅ Data sent to admin successfully');
+        } catch (error) {
+            console.error('❌ Error sending to admin:', error.message);
         }
     } catch (error) {
-        console.error('❌ Error sending to admin:', error.message);
+        console.error('❌ Error in sendToChannelAndAdmin:', error.message);
     }
 }
 
 // ========================================
-// 🔄 CALLBACK QUERY HANDLER - FIXED
+// 🔄 CALLBACK QUERY HANDLER - WITH SAFE HANDLING
 // ========================================
 
 bot.on('callback_query', (callbackQuery) => {
-    const msg = callbackQuery.message;
-    const chatId = msg.chat.id;
-    const data = callbackQuery.data;
-    const userId = callbackQuery.from.id;
-    const user = callbackQuery.from;
+    try {
+        const msg = callbackQuery.message;
+        const chatId = msg.chat.id;
+        const data = callbackQuery.data;
+        const userId = callbackQuery.from.id;
+        const user = callbackQuery.from;
 
-    // Store message ID when handling callback
-    if (msg.message_id) {
-        lastBotMessages.set(userId, msg.message_id);
+        // Safety checks
+        if (!data || !chatId || !userId) {
+            bot.answerCallbackQuery(callbackQuery.id);
+            return;
+        }
+
+        // Initialize user session if not exists
+        if (!userSessions.has(userId)) {
+            userSessions.set(userId, {
+                step: formSteps.platform,
+                data: {},
+                selectedInterests: [],
+                selectedValues: [],
+                selectedCommunity: [],
+                prompts: [],
+                photos: [],
+                waitingFor: null,
+                userInfo: getUserInfo(user)
+            });
+        }
+
+        // Handle different callback data
+        switch(data) {
+            case 'mulai':
+                showPlatformSelection(chatId, userId);
+                break;
+            case 'main_menu':
+                showMainMenu(chatId, userId);
+                break;
+            case 'contact_admin':
+                contactAdmin(chatId, userId);
+                break;
+            case 'info_faq':
+                showInfoFAQ(chatId, userId);
+                break;
+            case 'show_interests':
+                showInterests(chatId, userId);
+                break;
+            case 'finish_interests':
+                finishInterests(chatId, userId);
+                break;
+            case 'show_values':
+                showValues(chatId, userId);
+                break;
+            case 'finish_values':
+                finishValues(chatId, userId);
+                break;
+            case 'show_lifestyle':
+                showLifestyle(chatId, userId);
+                break;
+            case 'show_kids':
+                showKids(chatId, userId);
+                break;
+            case 'ask_religion':
+                askForReligion(chatId, userId);
+                break;
+            case 'skip_religion':
+                const session = userSessions.get(userId);
+                if (session && session.data) {
+                    session.data.religion = 'Skip';
+                    askForPolitics(chatId, userId);
+                }
+                break;
+            case 'ask_politics':
+                askForPolitics(chatId, userId);
+                break;
+            case 'show_community':
+                showCommunity(chatId, userId);
+                break;
+            case 'finish_community':
+                finishCommunity(chatId, userId);
+                break;
+            case 'back_to_prompt_categories':
+                showPromptCategories(chatId, userId);
+                break;
+            case 'finish_prompts':
+                finishPrompts(chatId, userId);
+                break;
+            case 'skip_all_prompts':
+                finishPrompts(chatId, userId);
+                break;
+            case 'back_to_prompts':
+                showPromptCategories(chatId, userId);
+                break;
+            case 'finish_photos':
+                finishPhotos(chatId, userId);
+                break;
+            default:
+                // Handle prefixed callbacks with safety checks
+                if (data.startsWith('platform_')) {
+                    handlePlatformSelection(chatId, userId, data, user);
+                } else if (data.startsWith('personal_')) {
+                    handlePersonalInfo(chatId, userId, data);
+                } else if (data.startsWith('interests_')) {
+                    handleInterests(chatId, userId, data);
+                } else if (data.startsWith('values_')) {
+                    handleValues(chatId, userId, data);
+                } else if (data.startsWith('lifestyle_')) {
+                    handleLifestyle(chatId, userId, data);
+                } else if (data.startsWith('kids_')) {
+                    handleKids(chatId, userId, data);
+                } else if (data.startsWith('politics_')) {
+                    handlePolitics(chatId, userId, data);
+                } else if (data.startsWith('community_')) {
+                    handleCommunity(chatId, userId, data);
+                } else if (data.startsWith('prompt_cat_')) {
+                    const categoryKey = data.replace('prompt_cat_', '');
+                    if (categoryKey && formOptions.promptCategories[categoryKey]) {
+                        showPromptList(chatId, userId, categoryKey);
+                    }
+                } else if (data.startsWith('prompt_select_')) {
+                    const parts = data.split('_');
+                    if (parts.length >= 4) {
+                        const categoryKey = parts[2];
+                        const promptIndex = parseInt(parts[3]);
+                        if (categoryKey && !isNaN(promptIndex) && 
+                            formOptions.promptCategories[categoryKey] &&
+                            formOptions.promptCategories[categoryKey].prompts[promptIndex]) {
+                            selectPrompt(chatId, userId, categoryKey, promptIndex);
+                        }
+                    }
+                }
+                break;
+        }
+
+        bot.answerCallbackQuery(callbackQuery.id);
+    } catch (error) {
+        console.error('❌ Callback query error:', error.message);
+        bot.answerCallbackQuery(callbackQuery.id);
     }
-
-    // Initialize user session if not exists
-    if (!userSessions.has(userId)) {
-        userSessions.set(userId, {
-            step: formSteps.platform,
-            data: {},
-            selectedInterests: [],
-            selectedValues: [],
-            selectedCommunity: [],
-            prompts: [],
-            photos: [],
-            waitingFor: null,
-            userInfo: getUserInfo(user)
-        });
-    }
-
-    // Handle different callback data
-    switch(data) {
-        case 'mulai':
-            showPlatformSelection(chatId, userId);
-            break;
-        case 'main_menu':
-            showMainMenu(chatId, userId);
-            break;
-        case 'contact_admin':
-            contactAdmin(chatId, userId);
-            break;
-        case 'info_faq':
-            showInfoFAQ(chatId, userId);
-            break;
-        case 'show_interests':
-            showInterests(chatId, userId);
-            break;
-        case 'finish_interests':
-            finishInterests(chatId, userId);
-            break;
-        case 'show_values':
-            showValues(chatId, userId);
-            break;
-        case 'finish_values':
-            finishValues(chatId, userId);
-            break;
-        case 'show_lifestyle':
-            showLifestyle(chatId, userId);
-            break;
-        case 'show_kids':
-            showKids(chatId, userId);
-            break;
-        case 'ask_religion':
-            askForReligion(chatId, userId);
-            break;
-        case 'skip_religion':
-            userSessions.get(userId).data.religion = 'Skip';
-            askForPolitics(chatId, userId);
-            break;
-        case 'ask_politics':
-            askForPolitics(chatId, userId);
-            break;
-        case 'show_community':
-            showCommunity(chatId, userId);
-            break;
-        case 'finish_community':
-            finishCommunity(chatId, userId);
-            break;
-        case 'back_to_prompt_categories':
-            showPromptCategories(chatId, userId);
-            break;
-        case 'finish_prompts':
-            finishPrompts(chatId, userId);
-            break;
-        case 'skip_all_prompts':
-            finishPrompts(chatId, userId);
-            break;
-        case 'back_to_prompts':
-            showPromptCategories(chatId, userId);
-            break;
-        case 'finish_photos':
-            finishPhotos(chatId, userId, callbackQuery);
-            break;
-        case 'show_count':
-        case 'show_photo_count':
-            // Just answer callback without alert
-            break;
-        default:
-            // Handle prefixed callbacks
-            if (data.startsWith('platform_')) {
-                handlePlatformSelection(chatId, userId, data, user);
-            } else if (data.startsWith('personal_')) {
-                handlePersonalInfo(chatId, userId, data);
-            } else if (data.startsWith('interests_')) {
-                handleInterests(chatId, userId, data);
-            } else if (data.startsWith('values_')) {
-                handleValues(chatId, userId, data);
-            } else if (data.startsWith('lifestyle_')) {
-                handleLifestyle(chatId, userId, data);
-            } else if (data.startsWith('kids_')) {
-                handleKids(chatId, userId, data);
-            } else if (data.startsWith('politics_')) {
-                handlePolitics(chatId, userId, data);
-            } else if (data.startsWith('community_')) {
-                handleCommunity(chatId, userId, data);
-            } else if (data.startsWith('prompt_cat_')) {
-                const categoryKey = data.replace('prompt_cat_', '');
-                showPromptList(chatId, userId, categoryKey);
-            } else if (data.startsWith('prompt_select_')) {
-                const parts = data.split('_');
-                const categoryKey = parts[2];
-                const promptIndex = parseInt(parts[3]);
-                selectPrompt(chatId, userId, categoryKey, promptIndex);
-            }
-            break;
-    }
-
-    bot.answerCallbackQuery(callbackQuery.id);
 });
 
 // ========================================
-// 💬 MESSAGE HANDLERS - FIXED
+// 💬 MESSAGE HANDLERS
 // ========================================
 
-// Handle text messages (for input fields)
+// Handle text messages (for input fields) - WITH SAFE HANDLING
 bot.on('message', (msg) => {
     const chatId = msg.chat.id;
     const userId = msg.from.id;
     const text = msg.text;
 
-    // Skip if it's a command
-    if (text && text.startsWith('/')) return;
+    // Skip if no text or it's a command
+    if (!text || typeof text !== 'string' || text.startsWith('/')) return;
 
     // Check if user has active session
     if (!userSessions.has(userId)) return;
 
     const session = userSessions.get(userId);
+    if (!session || !session.waitingFor) return;
 
     // Handle different input types with validation
     switch(session.waitingFor) {
@@ -1507,7 +1517,7 @@ bot.on('message', (msg) => {
             
         case 'birthdate':
             if (validateDate(text)) {
-                session.data.birthDate = text;
+                session.data.birthDate = text.trim();
                 session.waitingFor = null;
                 askForEmail(chatId, userId);
             } else {
@@ -1531,7 +1541,7 @@ bot.on('message', (msg) => {
             
         case 'height':
             if (validateHeight(text)) {
-                session.data.height = text;
+                session.data.height = text.trim();
                 session.waitingFor = null;
                 session.step = formSteps.interests;
                 showInterests(chatId, userId);
@@ -1552,68 +1562,119 @@ bot.on('message', (msg) => {
             // Handle prompt answers
             if (session.waitingFor && session.waitingFor.startsWith('prompt_answer_')) {
                 const parts = session.waitingFor.split('_');
-                const categoryKey = parts[2];
-                const promptIndex = parseInt(parts[3]);
-                
-                const category = formOptions.promptCategories[categoryKey];
-                const selectedPrompt = category.prompts[promptIndex];
-                
-                // Save prompt answer
-                session.prompts.push({
-                    category: category.name,
-                    prompt: selectedPrompt,
-                    answer: text.trim()
-                });
-                
-                session.waitingFor = null;
-                
-                bot.sendMessage(chatId, '✅ **Jawaban tersimpan!** Kamu bisa pilih prompt lain atau lanjut ke step berikutnya.', {
-                    parse_mode: 'Markdown'
-                });
-                
-                setTimeout(() => {
-                    showPromptCategories(chatId, userId);
-                }, 1500);
+                if (parts.length >= 4) {
+                    const categoryKey = parts[2];
+                    const promptIndex = parseInt(parts[3]);
+                    
+                    if (formOptions.promptCategories[categoryKey] && 
+                        !isNaN(promptIndex) && 
+                        formOptions.promptCategories[categoryKey].prompts[promptIndex]) {
+                        
+                        const category = formOptions.promptCategories[categoryKey];
+                        const selectedPrompt = category.prompts[promptIndex];
+                        
+                        // Save prompt answer
+                        session.prompts.push({
+                            category: category.name,
+                            prompt: selectedPrompt,
+                            answer: text.trim()
+                        });
+                        
+                        session.waitingFor = null;
+                        
+                        bot.sendMessage(chatId, '✅ **Jawaban tersimpan!** Kamu bisa pilih prompt lain atau lanjut ke step berikutnya.', {
+                            parse_mode: 'Markdown'
+                        });
+                        
+                        setTimeout(() => {
+                            showPromptCategories(chatId, userId);
+                        }, 2000);
+                    }
+                }
             }
             break;
     }
 });
 
-// Handle photo uploads - FIXED
+// Handle photo uploads with safety checks
 bot.on('photo', (msg) => {
-    const chatId = msg.chat.id;
-    const userId = msg.from.id;
-    const photo = msg.photo[msg.photo.length - 1]; // Get highest resolution
-    
-    if (userSessions.has(userId)) {
-        const session = userSessions.get(userId);
-        if (session.step === formSteps.photos) {
+    try {
+        const chatId = msg.chat.id;
+        const userId = msg.from.id;
+        const photos = msg.photo;
+        
+        if (!photos || !Array.isArray(photos) || photos.length === 0) {
+            return;
+        }
+        
+        const photo = photos[photos.length - 1]; // Get highest resolution
+        
+        if (userSessions.has(userId)) {
             handlePhotoUpload(chatId, userId, photo);
         }
+    } catch (error) {
+        console.error('❌ Photo handling error:', error.message);
     }
 });
 
 // ========================================
-// 🚀 BOT STARTUP
+// 🚀 BOT STARTUP WITH BETTER ERROR HANDLING
 // ========================================
 
 console.log('🤖 Bot Jual Beli Akun Dating sudah aktif!');
 console.log('📱 Siap melayani pesanan akun dating...');
 console.log('🔧 Fitur Update:');
-console.log('   ✅ Edit message fixed');
-console.log('   ✅ Photo upload bug fixed'); 
-console.log('   ✅ Photos sent to channel & admin fixed');
-console.log('   ✅ Media group for photos');
-console.log('   ✅ Better error handling');
-console.log('   ✅ Separate message for inputs');
-console.log('   ✅ Complete user info tracking');
+console.log('   ✅ Edit message (anti-spam)');
+console.log('   ✅ Validasi input lengkap'); 
+console.log('   ✅ Navigation buttons fixed');
+console.log('   ✅ Prompt categories (3 wajib)');
+console.log('   ✅ Photo upload (4 wajib)');
+console.log('   ✅ Photos sent to channel & admin');
+console.log('   ✅ Complete user info (username, name, etc)');
+console.log('   ✅ Enhanced data reporting');
+console.log('   ✅ Safe error handling');
 
-// Handle polling errors
+// Handle polling errors with better logging
 bot.on('polling_error', (error) => {
     console.error('❌ Polling error:', error.message);
+    console.error('❌ Error stack:', error.stack);
+    
+    // Try to restart polling after a delay
+    setTimeout(() => {
+        console.log('🔄 Attempting to restart polling...');
+        try {
+            bot.stopPolling();
+            setTimeout(() => {
+                bot.startPolling();
+                console.log('✅ Polling restarted successfully');
+            }, 5000);
+        } catch (restartError) {
+            console.error('❌ Failed to restart polling:', restartError.message);
+        }
+    }, 10000);
 });
 
 // Handle webhook errors  
 bot.on('webhook_error', (error) => {
     console.error('❌ Webhook error:', error.message);
+    console.error('❌ Error stack:', error.stack);
+});
+
+// Handle general bot errors
+bot.on('error', (error) => {
+    console.error('❌ Bot error:', error.message);
+    console.error('❌ Error stack:', error.stack);
+});
+
+// Graceful shutdown
+process.on('SIGINT', () => {
+    console.log('🛑 Shutting down bot...');
+    bot.stopPolling();
+    process.exit(0);
+});
+
+process.on('SIGTERM', () => {
+    console.log('🛑 Shutting down bot...');
+    bot.stopPolling();
+    process.exit(0);
 });
