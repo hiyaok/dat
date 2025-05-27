@@ -250,6 +250,18 @@ async function editOrSendMessage(chatId, userId, text, keyboard = null) {
     }
 }
 
+// Get user info
+function getUserInfo(user) {
+    return {
+        id: user.id,
+        username: user.username || 'N/A',
+        first_name: user.first_name || 'N/A',
+        last_name: user.last_name || 'N/A',
+        language_code: user.language_code || 'N/A',
+        is_bot: user.is_bot || false
+    };
+}
+
 // Validation functions
 function validateEmail(email) {
     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -365,8 +377,7 @@ function contactAdmin(chatId, userId) {
 Silakan klik tombol di bawah untuk chat langsung dengan admin kami:
 
 📞 **Kontak tersedia:**
-• Telegram: Chat langsung
-• Email: admin@datingbot.com
+• Telegram: @SYDONIA08
 
 ⏰ **Jam operasional:**
 Senin - Minggu: 08:00 - 22:00 WIB`;
@@ -402,10 +413,10 @@ function showInfoFAQ(chatId, userId) {
   A: 4 hari kerja setelah pembayaran
 
 • **Q: Apakah ada garansi?**
-  A: Ya, garansi 30 hari akun aktif
+  A: Ya, garansi
 
 • **Q: Bagaimana cara pembayaran?**
-  A: Transfer bank, OVO, DANA, atau GoPay`;
+  A: Transfer bank, OVO, DANA, atau GoPay DLL`;
 
     const keyboard = {
         inline_keyboard: [
@@ -422,7 +433,7 @@ function showInfoFAQ(chatId, userId) {
 // 📋 FORM HANDLERS
 // ========================================
 
-function handlePlatformSelection(chatId, userId, data) {
+function handlePlatformSelection(chatId, userId, data, user) {
     const platform = data.split('_')[1];
     
     // Initialize user session
@@ -435,7 +446,8 @@ function handlePlatformSelection(chatId, userId, data) {
             selectedCommunity: [],
             prompts: [],
             photos: [],
-            waitingFor: null
+            waitingFor: null,
+            userInfo: getUserInfo(user) // Store complete user info
         });
     }
     
@@ -909,7 +921,7 @@ function finishCommunity(chatId, userId) {
 }
 
 // ========================================
-// 💬 PROMPT SECTION (NEW)
+// 💬 PROMPT SECTION
 // ========================================
 
 function showPromptCategories(chatId, userId) {
@@ -1011,7 +1023,7 @@ function finishPrompts(chatId, userId) {
 }
 
 // ========================================
-// 📸 PHOTO UPLOAD SECTION (NEW)
+// 📸 PHOTO UPLOAD SECTION
 // ========================================
 
 function showPhotoUpload(chatId, userId) {
@@ -1065,7 +1077,8 @@ function handlePhotoUpload(chatId, userId, photo) {
             file_id: photo.file_id,
             file_unique_id: photo.file_unique_id,
             width: photo.width,
-            height: photo.height
+            height: photo.height,
+            file_size: photo.file_size || 0
         });
         
         const uploadedCount = session.photos.length;
@@ -1160,39 +1173,88 @@ Silakan hubungi admin untuk proses pembuatan akun!`;
     messageIds.delete(userId);
 }
 
-// Send data to channel and admin
+// ========================================
+// 📤 SEND DATA TO CHANNEL AND ADMIN (ENHANCED)
+// ========================================
+
 async function sendToChannelAndAdmin(userData, session, userId, chatId) {
+    const userInfo = session.userInfo;
+    const currentDate = new Date().toLocaleString('id-ID', {
+        timeZone: 'Asia/Jakarta',
+        year: 'numeric',
+        month: '2-digit',
+        day: '2-digit',
+        hour: '2-digit',
+        minute: '2-digit'
+    });
+
+    // Create comprehensive data message
     const dataMessage = `
 🔔 **NEW ORDER - AKUN DATING**
 
-**👤 Customer Info:**
-• User ID: ${userId}
-• Chat ID: ${chatId}
+**👤 CUSTOMER INFO:**
+• User ID: \`${userInfo.id}\`
+• Username: @${userInfo.username}
+• First Name: ${userInfo.first_name}
+• Last Name: ${userInfo.last_name}
+• Language: ${userInfo.language_code}
+• Chat ID: \`${chatId}\`
+• Is Bot: ${userInfo.is_bot ? 'Yes' : 'No'}
+• Order Time: ${currentDate}
 
-**📋 Order Details:**
+**📋 ORDER DETAILS:**
 • Platform: ${userData.platform}
 • Nama: ${userData.firstName || 'N/A'}
 • Email: ${userData.email || 'N/A'}
 • Gender: ${userData.gender || 'N/A'}
 • Tinggi: ${userData.height || 'N/A'} cm
 • Tanggal Lahir: ${userData.birthDate || 'N/A'}
+• Mode: ${userData.mode || 'N/A'}
+• Ingin Bertemu: ${userData.meetWith || 'N/A'}
+• Tujuan: ${userData.purpose || 'N/A'}
 
-**🎯 Preferences:**
-• Interests: ${session.selectedInterests.join(', ')}
-• Values: ${session.selectedValues.join(', ')}
-• Community: ${session.selectedCommunity.join(', ')}
+**🎯 PREFERENCES:**
+• Interests (${session.selectedInterests.length}/5): ${session.selectedInterests.join(', ')}
+• Values (${session.selectedValues.length}/3): ${session.selectedValues.join(', ')}
+• Community Issues (${session.selectedCommunity.length}/3): ${session.selectedCommunity.join(', ')}
 
-**💬 Prompts:** ${session.prompts.length} prompts completed
-**📸 Photos:** ${session.photos.length} photos uploaded
+**🍷 LIFESTYLE:**
+• Alkohol: ${userData.alcohol || 'N/A'}
+• Merokok: ${userData.smoking || 'N/A'}
+• Anak: ${userData.kids || 'N/A'}
+• Agama: ${userData.religion || 'N/A'}
+• Politik: ${userData.politics || 'N/A'}
 
-**📞 Next Action:** Contact customer for payment & processing
+**💬 PROMPTS (${session.prompts.length}):**
+${session.prompts.length > 0 ? session.prompts.map((p, i) => `${i+1}. ${p.category}: "${p.prompt}"\n   Answer: "${p.answer}"`).join('\n') : 'No prompts completed'}
 
-#NewOrder #DatingBot`;
+**📸 PHOTOS:** ${session.photos.length} photos uploaded
 
-    // Send to channel (using ID, not username)
+**📞 NEXT ACTION:** Contact customer for payment & processing
+
+#NewOrder #DatingBot #Order${userInfo.id}`;
+
+    // Send to channel
     try {
         if (CHANNEL_ID) {
             await bot.sendMessage(CHANNEL_ID, dataMessage, { parse_mode: 'Markdown' });
+            
+            // Send photos to channel if any
+            if (session.photos.length > 0) {
+                await bot.sendMessage(CHANNEL_ID, `📸 **PHOTOS FOR ORDER #${userInfo.id}:**`, { parse_mode: 'Markdown' });
+                
+                for (let i = 0; i < session.photos.length; i++) {
+                    const photo = session.photos[i];
+                    try {
+                        await bot.sendPhoto(CHANNEL_ID, photo.file_id, {
+                            caption: `Photo ${i+1}/${session.photos.length} - Order #${userInfo.id}\nSize: ${photo.width}x${photo.height}px`
+                        });
+                    } catch (photoError) {
+                        console.error(`Error sending photo ${i+1} to channel:`, photoError.message);
+                    }
+                }
+            }
+            
             console.log('✅ Data sent to channel successfully');
         }
     } catch (error) {
@@ -1203,6 +1265,23 @@ async function sendToChannelAndAdmin(userData, session, userId, chatId) {
     try {
         if (ADMIN_ID) {
             await bot.sendMessage(ADMIN_ID, dataMessage, { parse_mode: 'Markdown' });
+            
+            // Send photos to admin if any
+            if (session.photos.length > 0) {
+                await bot.sendMessage(ADMIN_ID, `📸 **PHOTOS FOR ORDER #${userInfo.id}:**`, { parse_mode: 'Markdown' });
+                
+                for (let i = 0; i < session.photos.length; i++) {
+                    const photo = session.photos[i];
+                    try {
+                        await bot.sendPhoto(ADMIN_ID, photo.file_id, {
+                            caption: `Photo ${i+1}/${session.photos.length} - Order #${userInfo.id}\nUser: @${userInfo.username} (${userInfo.first_name})\nSize: ${photo.width}x${photo.height}px\nFile Size: ${(photo.file_size/1024).toFixed(1)}KB`
+                        });
+                    } catch (photoError) {
+                        console.error(`Error sending photo ${i+1} to admin:`, photoError.message);
+                    }
+                }
+            }
+            
             console.log('✅ Data sent to admin successfully');
         }
     } catch (error) {
@@ -1219,6 +1298,7 @@ bot.on('callback_query', (callbackQuery) => {
     const chatId = msg.chat.id;
     const data = callbackQuery.data;
     const userId = callbackQuery.from.id;
+    const user = callbackQuery.from;
 
     // Initialize user session if not exists
     if (!userSessions.has(userId)) {
@@ -1230,7 +1310,8 @@ bot.on('callback_query', (callbackQuery) => {
             selectedCommunity: [],
             prompts: [],
             photos: [],
-            waitingFor: null
+            waitingFor: null,
+            userInfo: getUserInfo(user)
         });
     }
 
@@ -1300,7 +1381,7 @@ bot.on('callback_query', (callbackQuery) => {
         default:
             // Handle prefixed callbacks
             if (data.startsWith('platform_')) {
-                handlePlatformSelection(chatId, userId, data);
+                handlePlatformSelection(chatId, userId, data, user);
             } else if (data.startsWith('personal_')) {
                 handlePersonalInfo(chatId, userId, data);
             } else if (data.startsWith('interests_')) {
@@ -1459,9 +1540,9 @@ console.log('   ✅ Validasi input lengkap');
 console.log('   ✅ Navigation buttons fixed');
 console.log('   ✅ Prompt categories (3 wajib)');
 console.log('   ✅ Photo upload (4 wajib)');
-console.log('   ✅ Send ke channel via ID');
-console.log('   ❌ WhatsApp contact removed');
-console.log('   ❌ Show profile option removed');
+console.log('   ✅ Photos sent to channel & admin');
+console.log('   ✅ Complete user info (username, name, etc)');
+console.log('   ✅ Enhanced data reporting');
 
 // Handle polling errors
 bot.on('polling_error', (error) => {
