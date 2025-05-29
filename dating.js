@@ -221,8 +221,8 @@ function createInlineKeyboard(options, prefix, columns = 2) {
     return { inline_keyboard: keyboard };
 }
 
-// Edit message instead of sending new one
-async function editOrSendMessage(chatId, userId, text, keyboard = null) {
+// Edit message instead of sending new one (ONLY for button clicks)
+async function editOrSendMessage(chatId, userId, text, keyboard = null, forceNew = false) {
     const options = {
         parse_mode: 'Markdown',
         reply_markup: keyboard
@@ -230,15 +230,17 @@ async function editOrSendMessage(chatId, userId, text, keyboard = null) {
 
     try {
         const messageId = messageIds.get(userId);
-        if (messageId) {
+        // Force new message if requested (after text input)
+        if (forceNew || !messageId) {
+            const sentMessage = await bot.sendMessage(chatId, text, options);
+            messageIds.set(userId, sentMessage.message_id);
+        } else {
+            // Try to edit existing message (for button clicks)
             await bot.editMessageText(text, {
                 chat_id: chatId,
                 message_id: messageId,
                 ...options
             });
-        } else {
-            const sentMessage = await bot.sendMessage(chatId, text, options);
-            messageIds.set(userId, sentMessage.message_id);
         }
     } catch (error) {
         // If edit fails, send new message
@@ -360,7 +362,7 @@ bot.onText(/\/mulai/, (msg) => {
 // 📱 MAIN FUNCTIONS
 // ========================================
 
-function showPlatformSelection(chatId, userId) {
+function showPlatformSelection(chatId, userId, forceNew = false) {
     const message = `
 🎯 **Pilih Platform Dating yang Kamu Inginkan:**
 
@@ -376,10 +378,10 @@ Silakan pilih platform yang ingin kamu pesan akunnya:`;
         ]
     };
 
-    editOrSendMessage(chatId, userId, message, keyboard);
+    editOrSendMessage(chatId, userId, message, keyboard, forceNew);
 }
 
-function showMainMenu(chatId, userId) {
+function showMainMenu(chatId, userId, forceNew = false) {
     const message = `
 🏠 **Menu Utama**
 
@@ -393,10 +395,10 @@ Pilih menu di bawah ini:`;
         ]
     };
 
-    editOrSendMessage(chatId, userId, message, keyboard);
+    editOrSendMessage(chatId, userId, message, keyboard, forceNew);
 }
 
-function contactAdmin(chatId, userId) {
+function contactAdmin(chatId, userId, forceNew = false) {
     const message = `
 💬 **Hubungi Admin**
 
@@ -415,14 +417,14 @@ Senin - Minggu: 08:00 - 22:00 WIB`;
         ]
     };
 
-    editOrSendMessage(chatId, userId, message, keyboard);
+    editOrSendMessage(chatId, userId, message, keyboard, forceNew);
 }
 
 // ========================================
 // 📋 FORM HANDLERS
 // ========================================
 
-function handlePlatformSelection(chatId, userId, data, user) {
+function handlePlatformSelection(chatId, userId, data, user, forceNew = false) {
     const platform = data.split('_')[1];
     
     // Initialize user session
@@ -459,7 +461,7 @@ Mari kita mulai dengan informasi dasar kamu:
         { text: '🏠 Menu Utama', callback_data: 'main_menu' }
     ]);
     
-    editOrSendMessage(chatId, userId, message, keyboard);
+    editOrSendMessage(chatId, userId, message, keyboard, forceNew);
 }
 
 function handlePersonalInfo(chatId, userId, data) {
@@ -481,7 +483,7 @@ function handlePersonalInfo(chatId, userId, data) {
     }
 }
 
-function askForName(chatId, userId) {
+function askForName(chatId, userId, forceNew = false) {
     const message = `
 👤 **Nama Depan**
 
@@ -499,13 +501,13 @@ Ketik nama depan yang ingin digunakan untuk akun dating:
         ]
     };
     
-    editOrSendMessage(chatId, userId, message, keyboard);
+    editOrSendMessage(chatId, userId, message, keyboard, forceNew);
     
     const session = userSessions.get(userId);
     session.waitingFor = 'name';
 }
 
-function askForBirthDate(chatId, userId) {
+function askForBirthDate(chatId, userId, forceNew = false) {
     const message = `
 📅 **Tanggal Lahir**
 
@@ -525,13 +527,13 @@ Ketik tanggal lahir dalam format: **MM/DD/YYYY**
         ]
     };
     
-    editOrSendMessage(chatId, userId, message, keyboard);
+    editOrSendMessage(chatId, userId, message, keyboard, forceNew);
     
     const session = userSessions.get(userId);
     session.waitingFor = 'birthdate';
 }
 
-function askForEmail(chatId, userId) {
+function askForEmail(chatId, userId, forceNew = false) {
     const message = `
 📧 **Email**
 
@@ -551,13 +553,13 @@ Ketik alamat email yang valid:
         ]
     };
     
-    editOrSendMessage(chatId, userId, message, keyboard);
+    editOrSendMessage(chatId, userId, message, keyboard, forceNew);
     
     const session = userSessions.get(userId);
     session.waitingFor = 'email';
 }
 
-function askForMode(chatId, userId) {
+function askForMode(chatId, userId, forceNew = false) {
     const message = `
 🎯 **Mode Penggunaan**
 
@@ -569,10 +571,10 @@ Pilih mode penggunaan aplikasi:`;
         { text: '🏠 Menu Utama', callback_data: 'main_menu' }
     ]);
     
-    editOrSendMessage(chatId, userId, message, keyboard);
+    editOrSendMessage(chatId, userId, message, keyboard, forceNew);
 }
 
-function askForMeetWith(chatId, userId) {
+function askForMeetWith(chatId, userId, forceNew = false) {
     const message = `
 👥 **Ingin Bertemu dengan**
 
@@ -584,10 +586,10 @@ Kamu ingin bertemu dengan:`;
         { text: '🏠 Menu Utama', callback_data: 'main_menu' }
     ]);
     
-    editOrSendMessage(chatId, userId, message, keyboard);
+    editOrSendMessage(chatId, userId, message, keyboard, forceNew);
 }
 
-function askForPurpose(chatId, userId) {
+function askForPurpose(chatId, userId, forceNew = false) {
     const message = `
 💕 **Tujuan**
 
@@ -599,10 +601,10 @@ Kamu berharap menemukan:`;
         { text: '🏠 Menu Utama', callback_data: 'main_menu' }
     ]);
     
-    editOrSendMessage(chatId, userId, message, keyboard);
+    editOrSendMessage(chatId, userId, message, keyboard, forceNew);
 }
 
-function askForHeight(chatId, userId) {
+function askForHeight(chatId, userId, forceNew = false) {
     const message = `
 📏 **Tinggi Badan - Step 2/9**
 
@@ -622,7 +624,7 @@ Ketik tinggi badan dalam cm:
         ]
     };
     
-    editOrSendMessage(chatId, userId, message, keyboard);
+    editOrSendMessage(chatId, userId, message, keyboard, forceNew);
     
     const session = userSessions.get(userId);
     session.waitingFor = 'height';
@@ -630,7 +632,7 @@ Ketik tinggi badan dalam cm:
 }
 
 // Handle interests
-function showInterests(chatId, userId) {
+function showInterests(chatId, userId, forceNew = false) {
     const session = userSessions.get(userId);
     const selectedCount = session.selectedInterests.length;
     
@@ -658,7 +660,7 @@ ${selectedCount > 0 ? '\n**✅ Sudah dipilih:**\n' + session.selectedInterests.m
         { text: '🏠 Menu Utama', callback_data: 'main_menu' }
     ]);
     
-    editOrSendMessage(chatId, userId, message, keyboard);
+    editOrSendMessage(chatId, userId, message, keyboard, forceNew);
 }
 
 function handleInterests(chatId, userId, data) {
@@ -687,11 +689,13 @@ function finishInterests(chatId, userId) {
     } else {
         const message = `❌ **Pilih tepat 5 hal!** (Sekarang: ${session.selectedInterests.length}/5)`;
         sendNewMessage(chatId, message);
+        // Show interests menu again as new message  
+        setTimeout(() => showInterests(chatId, userId, true), 500);
     }
 }
 
 // Handle values
-function showValues(chatId, userId) {
+function showValues(chatId, userId, forceNew = false) {
     const session = userSessions.get(userId);
     const selectedCount = session.selectedValues.length;
     
@@ -718,7 +722,7 @@ ${selectedCount > 0 ? '\n**✅ Sudah dipilih:**\n' + session.selectedValues.map(
         { text: '🏠 Menu Utama', callback_data: 'main_menu' }
     ]);
     
-    editOrSendMessage(chatId, userId, message, keyboard);
+    editOrSendMessage(chatId, userId, message, keyboard, forceNew);
 }
 
 function handleValues(chatId, userId, data) {
@@ -742,10 +746,15 @@ function finishValues(chatId, userId) {
     if (session.selectedValues.length === 3) {
         session.step = formSteps.lifestyle;
         showLifestyle(chatId, userId);
+    } else {
+        const message = `❌ **Pilih tepat 3 nilai!** (Sekarang: ${session.selectedValues.length}/3)`;
+        sendNewMessage(chatId, message);
+        // Show values menu again as new message
+        setTimeout(() => showValues(chatId, userId, true), 500);
     }
 }
 
-function showLifestyle(chatId, userId) {
+function showLifestyle(chatId, userId, forceNew = false) {
     const message = `
 🍷 **Lifestyle & Kebiasaan - Step 5/9**
 
@@ -757,7 +766,7 @@ Pilih kebiasaan minum alkohol:`;
         { text: '🏠 Menu Utama', callback_data: 'main_menu' }
     ]);
     
-    editOrSendMessage(chatId, userId, message, keyboard);
+    editOrSendMessage(chatId, userId, message, keyboard, forceNew);
 }
 
 function handleLifestyle(chatId, userId, data) {
@@ -774,7 +783,7 @@ function handleLifestyle(chatId, userId, data) {
     }
 }
 
-function askForSmoking(chatId, userId) {
+function askForSmoking(chatId, userId, forceNew = false) {
     const message = `
 🚬 **Kebiasaan Merokok**
 
@@ -786,10 +795,10 @@ Pilih kebiasaan merokok:`;
         { text: '🏠 Menu Utama', callback_data: 'main_menu' }
     ]);
     
-    editOrSendMessage(chatId, userId, message, keyboard);
+    editOrSendMessage(chatId, userId, message, keyboard, forceNew);
 }
 
-function showKids(chatId, userId) {
+function showKids(chatId, userId, forceNew = false) {
     const message = `
 👶 **Anak & Rencana Keluarga - Step 6/9**
 
@@ -801,7 +810,7 @@ Pilih status tentang anak:`;
         { text: '🏠 Menu Utama', callback_data: 'main_menu' }
     ]);
     
-    editOrSendMessage(chatId, userId, message, keyboard);
+    editOrSendMessage(chatId, userId, message, keyboard, forceNew);
 }
 
 function handleKids(chatId, userId, data) {
@@ -813,7 +822,7 @@ function handleKids(chatId, userId, data) {
     askForReligion(chatId, userId);
 }
 
-function askForReligion(chatId, userId) {
+function askForReligion(chatId, userId, forceNew = false) {
     const message = `
 🛐 **Agama - Step 7/9**
 
@@ -834,7 +843,7 @@ Ketik agama kamu atau ketik "Skip" untuk melewati:
         ]
     };
     
-    editOrSendMessage(chatId, userId, message, keyboard);
+    editOrSendMessage(chatId, userId, message, keyboard, forceNew);
     
     const session = userSessions.get(userId);
     session.waitingFor = 'religion';
@@ -849,7 +858,7 @@ function handlePolitics(chatId, userId, data) {
     showCommunity(chatId, userId);
 }
 
-function askForPolitics(chatId, userId) {
+function askForPolitics(chatId, userId, forceNew = false) {
     const message = `
 🗳️ **Politik**
 
@@ -861,10 +870,10 @@ Pilih pandangan politik:`;
         { text: '🏠 Menu Utama', callback_data: 'main_menu' }
     ]);
     
-    editOrSendMessage(chatId, userId, message, keyboard);
+    editOrSendMessage(chatId, userId, message, keyboard, forceNew);
 }
 
-function showCommunity(chatId, userId) {
+function showCommunity(chatId, userId, forceNew = false) {
     const session = userSessions.get(userId);
     const selectedCount = session.selectedCommunity.length;
     
@@ -884,7 +893,7 @@ ${selectedCount > 0 ? '\n**✅ Sudah dipilih:**\n' + session.selectedCommunity.m
         { text: '🏠 Menu Utama', callback_data: 'main_menu' }
     ]);
     
-    editOrSendMessage(chatId, userId, message, keyboard);
+    editOrSendMessage(chatId, userId, message, keyboard, forceNew);
 }
 
 function handleCommunity(chatId, userId, data) {
@@ -913,7 +922,7 @@ function finishCommunity(chatId, userId) {
 // 💬 PROMPT SECTION
 // ========================================
 
-function showPromptCategories(chatId, userId) {
+function showPromptCategories(chatId, userId, forceNew = false) {
     const session = userSessions.get(userId);
     const completedPrompts = session.prompts.length;
     
@@ -953,10 +962,10 @@ Pilih kategori untuk melihat prompt:`;
         { text: '🏠 Menu Utama', callback_data: 'main_menu' }
     ]);
     
-    editOrSendMessage(chatId, userId, message, keyboard);
+    editOrSendMessage(chatId, userId, message, keyboard, forceNew);
 }
 
-function showPromptList(chatId, userId, categoryKey) {
+function showPromptList(chatId, userId, categoryKey, forceNew = false) {
     const category = formOptions.promptCategories[categoryKey];
     
     const message = `
@@ -974,10 +983,10 @@ Pilih prompt yang ingin kamu jawab:`;
         { text: '🔙 Kembali ke Kategori', callback_data: 'back_to_prompt_categories' }
     ]);
     
-    editOrSendMessage(chatId, userId, message, keyboard);
+    editOrSendMessage(chatId, userId, message, keyboard, forceNew);
 }
 
-function selectPrompt(chatId, userId, categoryKey, promptIndex) {
+function selectPrompt(chatId, userId, categoryKey, promptIndex, forceNew = false) {
     const session = userSessions.get(userId);
     const category = formOptions.promptCategories[categoryKey];
     const selectedPrompt = category.prompts[promptIndex];
@@ -999,7 +1008,7 @@ Ketik jawaban kamu untuk prompt ini:
         ]
     };
     
-    editOrSendMessage(chatId, userId, message, keyboard);
+    editOrSendMessage(chatId, userId, message, keyboard, forceNew);
     
     // Set waiting for prompt answer
     session.waitingFor = `prompt_answer_${categoryKey}_${promptIndex}`;
@@ -1008,14 +1017,15 @@ Ketik jawaban kamu untuk prompt ini:
 function finishPrompts(chatId, userId) {
     const session = userSessions.get(userId);
     session.step = formSteps.photos;
-    showPhotoUpload(chatId, userId);
+    // Force new message when moving to photo upload
+    showPhotoUpload(chatId, userId, true);
 }
 
 // ========================================
 // 📸 PHOTO UPLOAD SECTION
 // ========================================
 
-function showPhotoUpload(chatId, userId) {
+function showPhotoUpload(chatId, userId, forceNew = false) {
     const session = userSessions.get(userId);
     const uploadedPhotos = session.photos.length;
     
@@ -1055,7 +1065,7 @@ Kirim foto satu per satu ke chat ini`;
         { text: '🏠 Menu Utama', callback_data: 'main_menu' }
     ]);
     
-    editOrSendMessage(chatId, userId, message, keyboard);
+    editOrSendMessage(chatId, userId, message, keyboard, forceNew);
 }
 
 async function handlePhotoUpload(chatId, userId, photo, msgId) {
@@ -1100,7 +1110,8 @@ async function handlePhotoUpload(chatId, userId, photo, msgId) {
         // Set new timer to show upload menu after 5 seconds of no activity
         const timer = setTimeout(() => {
             if (session.photos.length >= 4) {
-                showPhotoUpload(chatId, userId);
+                // Force new message after photo upload
+                showPhotoUpload(chatId, userId, true);
             }
             photoTimers.delete(userId);
         }, 5000);
@@ -1120,6 +1131,8 @@ function finishPhotos(chatId, userId) {
         completeForm(chatId, userId);
     } else {
         sendNewMessage(chatId, `❌ **Upload minimal 4 foto!** (Sekarang: ${session.photos.length}/4)`);
+        // Show photo upload menu again as new message
+        setTimeout(() => showPhotoUpload(chatId, userId, true), 500);
     }
 }
 
@@ -1180,7 +1193,8 @@ Silakan hubungi admin untuk proses pembuatan akun!`;
         ]
     };
 
-    editOrSendMessage(chatId, userId, summaryMessage, keyboard);
+    // Force new message for completion summary
+    editOrSendMessage(chatId, userId, summaryMessage, keyboard, true);
 
     // Send data to channel and admin
     sendToChannelAndAdmin(userData, session, userId, chatId);
@@ -1350,13 +1364,16 @@ bot.on('callback_query', (callbackQuery) => {
         // Handle different callback data
         switch(data) {
             case 'mulai':
-                showPlatformSelection(chatId, userId);
+                // Force new message when starting 
+                showPlatformSelection(chatId, userId, true);
                 break;
             case 'main_menu':
-                showMainMenu(chatId, userId);
+                // Force new message for main menu
+                showMainMenu(chatId, userId, true);
                 break;
             case 'contact_admin':
-                contactAdmin(chatId, userId);
+                // Force new message for contact admin
+                contactAdmin(chatId, userId, true);
                 break;
             case 'show_interests':
                 showInterests(chatId, userId);
@@ -1396,7 +1413,8 @@ bot.on('callback_query', (callbackQuery) => {
                 finishCommunity(chatId, userId);
                 break;
             case 'back_to_prompt_categories':
-                showPromptCategories(chatId, userId);
+                // Force new message when going back to categories
+                showPromptCategories(chatId, userId, true);
                 break;
             case 'finish_prompts':
                 finishPrompts(chatId, userId);
@@ -1405,7 +1423,8 @@ bot.on('callback_query', (callbackQuery) => {
                 finishPrompts(chatId, userId);
                 break;
             case 'back_to_prompts':
-                showPromptCategories(chatId, userId);
+                // Force new message when going back
+                showPromptCategories(chatId, userId, true);
                 break;
             case 'finish_photos':
                 finishPhotos(chatId, userId);
@@ -1413,7 +1432,8 @@ bot.on('callback_query', (callbackQuery) => {
             default:
                 // Handle prefixed callbacks with safety checks
                 if (data.startsWith('platform_')) {
-                    handlePlatformSelection(chatId, userId, data, user);
+                    // Force new message when platform selected
+                    handlePlatformSelection(chatId, userId, data, user, true);
                 } else if (data.startsWith('personal_')) {
                     handlePersonalInfo(chatId, userId, data);
                 } else if (data.startsWith('interests_')) {
@@ -1431,7 +1451,8 @@ bot.on('callback_query', (callbackQuery) => {
                 } else if (data.startsWith('prompt_cat_')) {
                     const categoryKey = data.replace('prompt_cat_', '');
                     if (categoryKey && formOptions.promptCategories[categoryKey]) {
-                        showPromptList(chatId, userId, categoryKey);
+                        // Force new message when showing prompt list
+                        showPromptList(chatId, userId, categoryKey, true);
                     }
                 } else if (data.startsWith('prompt_select_')) {
                     const parts = data.split('_');
@@ -1441,7 +1462,8 @@ bot.on('callback_query', (callbackQuery) => {
                         if (categoryKey && !isNaN(promptIndex) && 
                             formOptions.promptCategories[categoryKey] &&
                             formOptions.promptCategories[categoryKey].prompts[promptIndex]) {
-                            selectPrompt(chatId, userId, categoryKey, promptIndex);
+                            // Force new message when selecting prompt
+                            selectPrompt(chatId, userId, categoryKey, promptIndex, true);
                         }
                     }
                 }
@@ -1481,7 +1503,8 @@ bot.on('message', (msg) => {
                 session.data.firstName = text.trim();
                 session.waitingFor = null;
                 sendNewMessage(chatId, '✅ **Nama tersimpan!**');
-                setTimeout(() => askForBirthDate(chatId, userId), 500);
+                // Force new message after text input
+                setTimeout(() => askForBirthDate(chatId, userId, true), 500);
             } else {
                 sendNewMessage(chatId, '❌ **Nama tidak valid!** Minimal 2 karakter, maksimal 50 karakter.');
             }
@@ -1492,7 +1515,8 @@ bot.on('message', (msg) => {
                 session.data.birthDate = text.trim();
                 session.waitingFor = null;
                 sendNewMessage(chatId, '✅ **Tanggal lahir tersimpan!**');
-                setTimeout(() => askForEmail(chatId, userId), 500);
+                // Force new message after text input
+                setTimeout(() => askForEmail(chatId, userId, true), 500);
             } else {
                 sendNewMessage(chatId, '❌ **Format tanggal salah!** Gunakan format MM/DD/YYYY (contoh: 05/15/1995)');
             }
@@ -1503,7 +1527,8 @@ bot.on('message', (msg) => {
                 session.data.email = text.toLowerCase().trim();
                 session.waitingFor = null;
                 sendNewMessage(chatId, '✅ **Email tersimpan!**');
-                setTimeout(() => askForMode(chatId, userId), 500);
+                // Force new message after text input
+                setTimeout(() => askForMode(chatId, userId, true), 500);
             } else {
                 sendNewMessage(chatId, '❌ **Email tidak valid!** Pastikan menggunakan format yang benar (contoh: user@gmail.com)');
             }
@@ -1515,7 +1540,8 @@ bot.on('message', (msg) => {
                 session.waitingFor = null;
                 session.step = formSteps.interests;
                 sendNewMessage(chatId, '✅ **Tinggi badan tersimpan!**');
-                setTimeout(() => showInterests(chatId, userId), 500);
+                // Force new message after text input
+                setTimeout(() => showInterests(chatId, userId, true), 500);
             } else {
                 sendNewMessage(chatId, '❌ **Tinggi badan tidak valid!** Masukkan angka antara 100-250 cm');
             }
@@ -1525,7 +1551,8 @@ bot.on('message', (msg) => {
             session.data.religion = text.trim();
             session.waitingFor = null;
             sendNewMessage(chatId, '✅ **Agama tersimpan!**');
-            setTimeout(() => askForPolitics(chatId, userId), 500);
+            // Force new message after text input
+            setTimeout(() => askForPolitics(chatId, userId, true), 500);
             break;
             
         default:
@@ -1555,7 +1582,8 @@ bot.on('message', (msg) => {
                         sendNewMessage(chatId, '✅ **Jawaban tersimpan!** Kamu bisa pilih prompt lain atau lanjut ke step berikutnya.');
                         
                         setTimeout(() => {
-                            showPromptCategories(chatId, userId);
+                            // Force new message after prompt answer
+                            showPromptCategories(chatId, userId, true);
                         }, 1000);
                     }
                 }
@@ -1593,8 +1621,9 @@ bot.on('photo', (msg) => {
 console.log('🤖 Bot Jual Beli Akun Dating sudah aktif!');
 console.log('📱 Siap melayani pesanan akun dating...');
 console.log('🔧 Fitur Update:');
-console.log('   ✅ Edit message (anti-spam) untuk buttons');
-console.log('   ✅ Send new message untuk input text/foto');
+console.log('   ✅ Edit message hanya untuk button clicks');
+console.log('   ✅ New message untuk form setelah text input');
+console.log('   ✅ Button selalu di paling bawah chat');
 console.log('   ✅ Delete user photo messages'); 
 console.log('   ✅ Photo timer 5 detik');
 console.log('   ✅ Send to channel');
