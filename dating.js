@@ -287,12 +287,6 @@ function getUserInfo(user) {
 }
 
 // Validation functions
-function validateEmail(email) {
-    if (!email || typeof email !== 'string') return false;
-    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-    return emailRegex.test(email.trim());
-}
-
 function validateDate(date) {
     if (!date || typeof date !== 'string') return false;
     const dateRegex = /^(0[1-9]|1[0-2])\/(0[1-9]|[12][0-9]|3[01])\/(19|20)\d{2}$/;
@@ -531,32 +525,6 @@ Ketik tanggal lahir dalam format: **MM/DD/YYYY**
     
     const session = userSessions.get(userId);
     session.waitingFor = 'birthdate';
-}
-
-function askForEmail(chatId, userId, forceNew = false) {
-    const message = `
-📧 **Email**
-
-Ketik alamat email yang valid:
-
-📝 **Contoh yang benar:**
-• user@gmail.com
-• nama@yahoo.com
-• test@outlook.com
-
-⚠️ **Email harus mengandung @ dan domain yang valid**`;
-    
-    const keyboard = {
-        inline_keyboard: [
-            [{ text: '🔙 Kembali', callback_data: 'mulai' }],
-            [{ text: '🏠 Menu Utama', callback_data: 'main_menu' }]
-        ]
-    };
-    
-    editOrSendMessage(chatId, userId, message, keyboard, forceNew);
-    
-    const session = userSessions.get(userId);
-    session.waitingFor = 'email';
 }
 
 function askForMode(chatId, userId, forceNew = false) {
@@ -1515,22 +1483,10 @@ bot.on('message', (msg) => {
                 session.data.birthDate = text.trim();
                 session.waitingFor = null;
                 sendNewMessage(chatId, '✅ **Tanggal lahir tersimpan!**');
-                // Force new message after text input
-                setTimeout(() => askForEmail(chatId, userId, true), 500);
-            } else {
-                sendNewMessage(chatId, '❌ **Format tanggal salah!** Gunakan format MM/DD/YYYY (contoh: 05/15/1995)');
-            }
-            break;
-            
-        case 'email':
-            if (validateEmail(text)) {
-                session.data.email = text.toLowerCase().trim();
-                session.waitingFor = null;
-                sendNewMessage(chatId, '✅ **Email tersimpan!**');
-                // Force new message after text input
+                // Force new message after text input - skip email, go to mode
                 setTimeout(() => askForMode(chatId, userId, true), 500);
             } else {
-                sendNewMessage(chatId, '❌ **Email tidak valid!** Pastikan menggunakan format yang benar (contoh: user@gmail.com)');
+                sendNewMessage(chatId, '❌ **Format tanggal salah!** Gunakan format MM/DD/YYYY (contoh: 05/15/1995)');
             }
             break;
             
@@ -1630,6 +1586,7 @@ console.log('   ✅ Send to channel');
 console.log('   ✅ Photos tanpa caption');
 console.log('   ✅ Customer info simplified');
 console.log('   ✅ FAQ removed');
+console.log('   ✅ Email input removed');
 
 // Handle polling errors
 bot.on('polling_error', (error) => {
