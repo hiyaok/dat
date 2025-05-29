@@ -1012,7 +1012,9 @@ ${uploadedPhotos > 0 ? '\n**✅ Foto terupload:** ' + uploadedPhotos + ' foto\n'
 • Hindari foto blur atau gelap
 
 **Cara upload:**
-Kirim foto satu per satu ke chat ini`;
+Kirim foto satu per satu ke chat ini
+
+Jangan lupa! Data Anda belum terkirim sampai Anda menekan tombol KIRIM`;
 
     const keyboard = {
         inline_keyboard: []
@@ -1206,7 +1208,6 @@ async function sendToChannelAndAdmin(userData, session, userId, chatId) {
 🔔 **NEW ORDER - AKUN DATING**
 
 **👤 CUSTOMER INFO:**
-• Username: @${userInfo.username || 'N/A'}
 • First Name: ${userInfo.first_name || 'N/A'}
 • Last Name: ${userInfo.last_name || 'N/A'}
 • Order Time: ${currentDate}
