@@ -4,7 +4,7 @@ const TelegramBot = require('node-telegram-bot-api');
 // ========================================
 // 🔥 KONFIGURASI BOT
 // ========================================
-const BOT_TOKEN = '7547262492:AAF_iThzUhHCGKRJN0df7hWB-EhlffV_lgQ'; // Ganti dengan token bot Anda dari @BotFather
+const BOT_TOKEN = '-EhlffV_lgQ'; // Ganti dengan token bot Anda dari @BotFather
 const ADMIN_ID = '6291845861'; // Ganti dengan ID Telegram admin (angka, bukan username)
 const CHANNEL_ID = '-1002672270285'; // Ganti dengan ID channel (angka, bukan @username)
 
